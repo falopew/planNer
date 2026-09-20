@@ -7,9 +7,10 @@ The GitHub repository is named `planNer`; the product is named PlanLayer.
 Read `docs/PRODUCT_SPEC.md` before changing application behavior.
 
 Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
-Milestone 1 adds only persistent Fixed Event CRUD and its forms. A roadmap is
+Milestone 1 supplies persistent Fixed Event CRUD. Milestone 2 adds only persistent
+Reminder CRUD and a mixed chronological display. A roadmap is
 not authorization to implement it. Complete only the milestone requested.
-Work for Milestone 1 belongs on `milestone-1-fixed-events`, with a Pull Request
+Work for Milestone 2 belongs on `milestone-2-reminders`, with a Pull Request
 against `main`. Do not commit to main or merge the PR automatically.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
@@ -23,8 +24,15 @@ without an explicit request.
   the deadline itself is never treated as a reservation.
 - Reminders have a reminder datetime, occupy no time, and never cause conflicts.
   Exclude them from busy intervals, free-gap subtraction, and load calculations.
+- Keep Reminder dataclasses, the reminders table and ReminderRepository separate
+  from Events. A reminder has no start/end/duration fields. Do not turn it into
+  a zero-duration event. Display composition must preserve its distinct type.
+- Reminder range queries use `start <= reminder_datetime < end`. Multiple
+  reminders at the same time and reminders inside events are valid.
+- Milestone 2 adds no dismissal/completion state, notifications, recurrence,
+  scheduling, load or gap calculations. Reminders are in-app information only.
 - Use half-open intervals `[start, end)`. Adjacent intervals do not overlap.
-- Require `end > start`. Milestone 1 explicitly uses local naive datetimes
+- Events require `end > start`. Milestones 1–2 use local naive datetimes
   everywhere, including creation/update timestamps. Reject timezone-aware input.
   Do not add timezone conversion or UTC storage without a later request.
 - Preserve the distinction between fixed-event conflicts and task-block
@@ -47,7 +55,8 @@ Planned layers:
 - `app.py`: Streamlit presentation entry point.
 - `src/ui/`: Streamlit forms/cards; calls services, never database sessions.
 - `src/services/`: application use cases, orchestration, transactions.
-- `src/models/`: plain dataclasses. EventService validates Fixed Event input.
+- `src/models/`: plain dataclasses. EventService and ReminderService validate
+  their own input using small shared validators in `src/services/validation.py`.
 - `src/engine/`: future pure scheduling
   algorithms; no Streamlit, SQLAlchemy, database access or network calls.
 - `src/database/`: SQLAlchemy mappings, queries and session setup.

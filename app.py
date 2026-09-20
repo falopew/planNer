@@ -4,9 +4,14 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.db import check_database_health, initialize_database
+from src.database.reminder_repository import ReminderRepository
 from src.database.repositories import EventRepository
 from src.services.event_service import EventService
-from src.ui.events import render_events
+from src.services.reminder_service import ReminderService
+from src.services.schedule_service import ScheduleService
+from src.ui.events import render_event_editor
+from src.ui.reminders import render_reminder_editor
+from src.ui.schedule import render_schedule
 
 
 def main() -> None:
@@ -29,9 +34,19 @@ def main() -> None:
             st.error("Database connection check failed.")
             return
         st.caption(
-            "Milestone 1: Fixed Events. Times are local, without timezone conversion."
+            "Milestone 2: Fixed Events and Reminders. "
+            "Times are local, without timezone conversion."
         )
-        render_events(EventService(EventRepository(engine)))
+        events = EventService(EventRepository(engine))
+        reminders = ReminderService(ReminderRepository(engine))
+        item_type = st.radio(
+            "Add item", ("Fixed Event", "Reminder"), horizontal=True, key="item_type"
+        )
+        if item_type == "Fixed Event":
+            render_event_editor(events)
+        else:
+            render_reminder_editor(reminders)
+        render_schedule(ScheduleService(events, reminders))
     finally:
         engine.dispose()
 

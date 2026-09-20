@@ -27,3 +27,19 @@ class EventRecord(Base):
     location: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ReminderRecord(Base):
+    __tablename__ = "reminders"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) BETWEEN 1 AND 200", name="reminder_title"),
+        CheckConstraint("length(trim(category)) > 0", name="reminder_category"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    reminder_datetime: Mapped[datetime] = mapped_column(DateTime, index=True)
+    category: Mapped[str] = mapped_column(String, default="Other")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)

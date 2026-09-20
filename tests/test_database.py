@@ -17,7 +17,7 @@ def test_initialization_creates_database_and_enables_foreign_keys(
         assert check_database_health(engine)
         with engine.connect() as connection:
             assert connection.scalar(text("PRAGMA foreign_keys")) == 1
-            assert inspect(connection).get_table_names() == ["events"]
+            assert inspect(connection).get_table_names() == ["events", "reminders"]
         engine.dispose()
         with engine.connect() as connection:
             assert connection.scalar(text("PRAGMA foreign_keys")) == 1

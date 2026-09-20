@@ -8,10 +8,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.repositories import EventRepository
 from src.models.event import Event, EventInput
+from src.services.validation import (
+    InputValidationError,
+    normalize_text,
+    validate_local_datetime,
+    validate_title,
+)
 
-
-class EventValidationError(ValueError):
-    """User-correctable input error."""
+EventValidationError = InputValidationError
 
 
 class EventStorageError(RuntimeError):
@@ -29,37 +33,22 @@ def _storage_errors() -> Iterator[None]:
 
 
 def _validate_interval(start: datetime | None, end: datetime | None) -> None:
-    if not isinstance(start, datetime):
-        raise EventValidationError("Start date and time are required.")
-    if not isinstance(end, datetime):
-        raise EventValidationError("End date and time are required.")
-    if start.tzinfo is not None or end.tzinfo is not None:
-        raise EventValidationError("Use local date and time without a timezone.")
+    start = validate_local_datetime(start, "Start")
+    end = validate_local_datetime(end, "End")
     if end <= start:
         raise EventValidationError("End time must be later than start time.")
 
 
 def _normalize(data: EventInput) -> EventInput:
-    if not isinstance(data.title, str) or not data.title.strip():
-        raise EventValidationError("Title must not be empty.")
-    title = data.title.strip()
-    if len(title) > 200:
-        raise EventValidationError("Title must be 200 characters or fewer.")
+    title = validate_title(data.title)
     _validate_interval(data.start_datetime, data.end_datetime)
-    for label, value in (
-        ("Description", data.description),
-        ("Category", data.category),
-        ("Location", data.location),
-    ):
-        if not isinstance(value, str):
-            raise EventValidationError(f"{label} must be text.")
     return EventInput(
         title=title,
         start_datetime=data.start_datetime,
         end_datetime=data.end_datetime,
-        description=data.description.strip(),
-        category=data.category.strip() or "Other",
-        location=data.location.strip(),
+        description=normalize_text(data.description, "Description"),
+        category=normalize_text(data.category, "Category") or "Other",
+        location=normalize_text(data.location, "Location"),
     )
 
 

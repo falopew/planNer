@@ -242,7 +242,7 @@ def test_database_constraints_and_rollback(tmp_path: Path) -> None:
             repository.create_event(event_input(12, 10))
         assert repository.list_events() == []
         assert repository.create_event(event_input()).id > 0
-        assert inspect(engine).get_table_names() == ["events"]
+        assert inspect(engine).get_table_names() == ["events", "reminders"]
     finally:
         engine.dispose()
 
