@@ -4,8 +4,9 @@
 
 PlanLayer is a smart personal calendar and life-planning application built as
 a university portfolio project. The repository name remains `planNer`.
-This specification describes planned behavior; no application functionality
-is implemented in this milestone.
+Milestone 0 implements packaging, the requested package skeleton, SQLite
+initialization/health checks and a minimal Streamlit status screen. All product
+features below remain planned; no item models or scheduling logic exist yet.
 
 The product helps a person distinguish commitments, work that still needs
 time, and lightweight reminders. It should answer: What is fixed today?
@@ -75,8 +76,8 @@ It does not promise operating-system alarms or delivery while Streamlit is close
 ## Architecture
 
 Use Python 3.12+, Streamlit, SQLite, SQLAlchemy, pandas, Plotly,
-python-dateutil, pytest and ruff. Dependency versions and packaging will be
-selected when implementation is requested.
+python-dateutil, pytest and ruff. Dependency ranges, setuptools packaging, pytest and ruff configuration are
+defined in `pyproject.toml`; pytest and ruff belong to the `dev` extra.
 
 | Layer | Responsibility | Must not contain |
 | --- | --- | --- |
@@ -85,22 +86,36 @@ selected when implementation is requested.
 | Domain/scheduling | Typed models and pure interval, recurrence, load and scheduling functions | Database sessions, Streamlit, network access |
 | Persistence | SQLAlchemy mappings, SQLite access, bounded queries and session management | UI behavior or scheduling policy |
 
-Planned source layout:
+Current foundation layout:
 
 ```text
-src/planlayer/
-  ui/
+app.py
+src/
+  __init__.py
+  database/
+    __init__.py
+    db.py
+  models/
+    __init__.py
   services/
-  domain/
-  persistence/
+    __init__.py
+  engine/
+    __init__.py
+  utils/
+    __init__.py
 tests/
-  unit/
-  integration/
+data/
+assets/
 docs/PRODUCT_SPEC.md
 AGENTS.md
 ```
 
-This is a conceptual layout, not scaffolding to create during this milestone.
+This requested layout supersedes the earlier `src/planlayer` proposal.
+`app.py` owns presentation, `services` orchestration, `engine` pure domain
+algorithms, and `database` persistence. `models` and `utils` remain placeholders.
+Only database initialization/health checks are implemented. The default local
+SQLite path is `data/planlayer.db`; database files are never tracked by Git.
+The following use-case flow describes future feature work.
 A user action enters a service; the service loads data through persistence,
 passes plain typed values to domain functions, and returns results to the UI.
 Accepted changes are saved in a transaction. Use concrete, small modules
@@ -239,25 +254,27 @@ Local database files must be excluded from version control.
 Each milestone requires an explicit implementation request. Dependencies below
 describe ordering, not permission to build ahead.
 
-1. **Specification (current):** AGENTS.md and this product specification only.
-2. **Foundation and core records:** establish packaging/test/lint setup,
-   typed models, SQLite persistence and service CRUD for the three core types.
+1. **Specification (complete):** AGENTS.md and this product specification.
+2. **Milestone 0 — Project Foundation (current):** packaging/test/lint setup,
+   package placeholders, SQLite initialization/health check and minimal UI.
+   No domain tables or planning features. Test isolated initialization and reruns.
+3. **Core records (future):** typed models and service CRUD for the three core types.
    Verify validation and persistence round trips in temporary databases.
-3. **Daily/weekly views and reminder layer:** display local-time events and
+4. **Daily/weekly views and reminder layer:** display local-time events and
    reminders through services. Verify reminders never reserve calendar space
    and Streamlit reruns do not duplicate writes.
-4. **Recurring events:** daily/weekly series and bounded expansion.
+5. **Recurring events:** daily/weekly series and bounded expansion.
    Verify overnight overlap, termination limits and DST policy.
-5. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
+6. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
    and daily load. Verify adjacency, containment, cross-day clipping,
    zero capacity and no double-counting.
-6. **Preferences and recommendations:** configurable planning/sleep/meal
+7. **Preferences and recommendations:** configurable planning/sleep/meal
    windows and deterministic suggestions. Verify impossible recommendations
    are explained and suggestions do not mutate occupancy.
-7. **Flexible task scheduling:** proposals, explicit acceptance, unscheduling
+8. **Flexible task scheduling:** proposals, explicit acceptance, unscheduling
    and collision reporting for accepted blocks. Verify deadline boundaries,
    tie-breaking, occupied gaps and insufficient contiguous capacity.
-8. **Weekly analytics and portfolio polish:** pandas/Plotly reporting,
+9. **Weekly analytics and portfolio polish:** pandas/Plotly reporting,
    documented metric definitions, example walkthrough and interview-ready
    explanation. Verify report aggregates against domain results.
 
@@ -271,5 +288,6 @@ typed functions over unnecessary abstractions.
 The first implementation intentionally uses a single local user, unsplit task
 placements, a deterministic greedy scheduler, virtual recurrence occurrences,
 and in-app reminders. These choices keep the project understandable while
-leaving clear extension points. None of the planned source layout, schema,
-engines or milestone functionality is implemented by these documents.
+leaving clear extension points. Only the foundation described above is implemented.
+The domain schema,
+engines and later product milestones remain unimplemented.

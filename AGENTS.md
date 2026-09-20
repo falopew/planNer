@@ -6,9 +6,10 @@ PlanLayer is a smart personal calendar and life-planning portfolio project.
 The GitHub repository is named `planNer`; the product is named PlanLayer.
 Read `docs/PRODUCT_SPEC.md` before changing application behavior.
 
-The current milestone is documentation and specification only. Do not create
-application code, dependency configuration, database files, or UI scaffolding
-until implementation is explicitly requested. A roadmap is not authorization
+Milestone 0 implements only project packaging, the requested package skeleton,
+SQLite initialization/health checks, a minimal Streamlit screen and foundation
+tests. Do not implement item models, CRUD, calendars or recommendations until
+explicitly requested. A roadmap is not authorization
 to implement it. Complete only the milestone or change requested by the user.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
@@ -41,13 +42,15 @@ implementation needs them; do not add frameworks speculatively.
 
 Planned layers:
 
-- `src/planlayer/ui/`: Streamlit views, forms, presentation and session state.
-- `src/planlayer/services/`: application use cases, orchestration, transactions.
-- `src/planlayer/domain/`: plain typed models, validation and pure scheduling
+- `app.py`: Streamlit presentation entry point.
+- `src/services/`: application use cases, orchestration, transactions.
+- `src/engine/`: plain typed models, validation and pure scheduling
   algorithms; no Streamlit, SQLAlchemy, database access or network calls.
-- `src/planlayer/persistence/`: SQLAlchemy mappings, queries and session setup.
+- `src/database/`: SQLAlchemy mappings, queries and session setup.
 
-These are planned paths, not a requirement to scaffold them now.
+The requested foundation uses a literal `src` package. `src/models/` is reserved
+for models and `src/utils/` for small helpers. Do not implement these future
+layers beyond package placeholders in Milestone 0.
 UI calls services; services use domain algorithms and persistence.
 Persistence must not import UI. Domain must not import services or persistence.
 Keep ORM objects inside persistence/service boundaries; pass plain domain data
