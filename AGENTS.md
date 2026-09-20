@@ -6,11 +6,11 @@ PlanLayer is a smart personal calendar and life-planning portfolio project.
 The GitHub repository is named `planNer`; the product is named PlanLayer.
 Read `docs/PRODUCT_SPEC.md` before changing application behavior.
 
-Milestone 0 implements only project packaging, the requested package skeleton,
-SQLite initialization/health checks, a minimal Streamlit screen and foundation
-tests. Do not implement item models, CRUD, calendars or recommendations until
-explicitly requested. A roadmap is not authorization
-to implement it. Complete only the milestone or change requested by the user.
+Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
+Milestone 1 adds only persistent Fixed Event CRUD and its forms. A roadmap is
+not authorization to implement it. Complete only the milestone requested.
+Work for Milestone 1 belongs on `milestone-1-fixed-events`, with a Pull Request
+against `main`. Do not commit to main or merge the PR automatically.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
 without an explicit request.
@@ -24,13 +24,15 @@ without an explicit request.
 - Reminders have a reminder datetime, occupy no time, and never cause conflicts.
   Exclude them from busy intervals, free-gap subtraction, and load calculations.
 - Use half-open intervals `[start, end)`. Adjacent intervals do not overlap.
-- Require `end > start` and timezone-aware datetimes at domain boundaries.
+- Require `end > start`. Milestone 1 explicitly uses local naive datetimes
+  everywhere, including creation/update timestamps. Reject timezone-aware input.
+  Do not add timezone conversion or UTC storage without a later request.
 - Preserve the distinction between fixed-event conflicts and task-block
   collisions. Never silently move fixed events or overwrite task placements.
 - Expand recurring events only within a bounded query window; include
   occurrences that start before the window but overlap it.
-- Use the user's IANA timezone for local dates and recurrence. Use UTC instants
-  for stored one-off timestamps and comparisons.
+- Timezone and recurrence support are future work. The local-naive rule above
+  supersedes the original specification's timezone proposal for this milestone.
 - Recommendations and scheduling must be deterministic and explainable.
   Inject the current time into algorithms instead of reading the clock inside them.
 
@@ -43,14 +45,16 @@ implementation needs them; do not add frameworks speculatively.
 Planned layers:
 
 - `app.py`: Streamlit presentation entry point.
+- `src/ui/`: Streamlit forms/cards; calls services, never database sessions.
 - `src/services/`: application use cases, orchestration, transactions.
-- `src/engine/`: plain typed models, validation and pure scheduling
+- `src/models/`: plain dataclasses. EventService validates Fixed Event input.
+- `src/engine/`: future pure scheduling
   algorithms; no Streamlit, SQLAlchemy, database access or network calls.
 - `src/database/`: SQLAlchemy mappings, queries and session setup.
 
-The requested foundation uses a literal `src` package. `src/models/` is reserved
-for models and `src/utils/` for small helpers. Do not implement these future
-layers beyond package placeholders in Milestone 0.
+The requested foundation uses a literal `src` package. `src/utils/` remains
+reserved for small helpers. ORM models and concrete repositories live under
+`src/database/`; repository write operations own short-lived transactions.
 UI calls services; services use domain algorithms and persistence.
 Persistence must not import UI. Domain must not import services or persistence.
 Keep ORM objects inside persistence/service boundaries; pass plain domain data
@@ -71,6 +75,8 @@ not repeat writes: mutate only through explicit user actions and service calls.
 - Explain non-obvious domain decisions, not obvious syntax.
 - Validate in services/domain even when UI validation exists.
 - Use explicit transaction boundaries and rollback on failed multi-step writes.
+- Keep `initialize_database` and its health check working. `create_all` may add
+  missing implemented tables; it must not drop data. Do not add Alembic yet.
 - Do not commit secrets, local SQLite databases, caches or generated reports.
 - Preserve unrelated user changes; inspect the working tree before editing.
 - Keep documentation synchronized with intentional behavior changes.

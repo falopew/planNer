@@ -1,9 +1,12 @@
-"""Minimal Streamlit entry point for the project foundation."""
+"""Compose the database, event service and Streamlit presentation."""
 
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.db import check_database_health, initialize_database
+from src.database.repositories import EventRepository
+from src.services.event_service import EventService
+from src.ui.events import render_events
 
 
 def main() -> None:
@@ -24,12 +27,13 @@ def main() -> None:
             st.success("Database connected — SQLite is ready.")
         else:
             st.error("Database connection check failed.")
+            return
+        st.caption(
+            "Milestone 1: Fixed Events. Times are local, without timezone conversion."
+        )
+        render_events(EventService(EventRepository(engine)))
     finally:
         engine.dispose()
-
-    st.caption(
-        "Milestone 0: project foundation. Planning features are not implemented yet."
-    )
 
 
 if __name__ == "__main__":

@@ -4,9 +4,12 @@
 
 PlanLayer is a smart personal calendar and life-planning application built as
 a university portfolio project. The repository name remains `planNer`.
-Milestone 0 implements packaging, the requested package skeleton, SQLite
-initialization/health checks and a minimal Streamlit status screen. All product
-features below remain planned; no item models or scheduling logic exist yet.
+Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
+Milestone 1 adds persistent Fixed Event creation, editing, deletion, listing
+and range queries. Other item types, calendars and engines below remain planned.
+
+Milestone 1 explicitly uses local naive datetimes, superseding the original
+timezone-aware/UTC proposal. No conversion or timezone libraries are introduced.
 
 The product helps a person distinguish commitments, work that still needs
 time, and lightweight reminders. It should answer: What is fixed today?
@@ -26,15 +29,20 @@ deterministic algorithms.
 | Flexible Task | Deadline and positive estimated duration | No, until explicitly scheduled | Can receive a linked scheduled block in available time |
 | Reminder | Reminder datetime | Never | Appears in a separate layer; never creates conflicts |
 
-All items have an identifier, title, optional notes, and creation/update
+Planned items have an identifier, title, optional notes, and creation/update
 timestamps. Titles must not be blank.
 
 ### Fixed Events
 
 A Fixed Event represents an existing commitment, such as a lecture or meeting.
-Its end must be later than its start. Events may cross midnight.
-Overlapping events remain visible; the system reports conflicts rather than
-silently deleting, moving or rejecting the real commitments.
+Its end must be later than its start. The implemented `events` table stores
+id, title, description, start_datetime, end_datetime, category, location,
+created_at and updated_at. Titles are trimmed and limited to 200 characters;
+blank categories default to Other. Category is a string, not a separate table.
+Edits preserve id/created_at and refresh updated_at. All times are local naive.
+The creation form uses one selected date; the service can store any valid
+interval, including overnight events. Overlaps are allowed, but conflict
+detection/reporting is NOT implemented in Milestone 1.
 
 Recurring event definitions generate virtual occurrences for the visible
 window. Occurrences behave like ordinary events for occupancy and conflict
@@ -95,10 +103,17 @@ src/
   database/
     __init__.py
     db.py
+    models.py
+    repositories.py
   models/
     __init__.py
+    event.py
   services/
     __init__.py
+    event_service.py
+  ui/
+    __init__.py
+    events.py
   engine/
     __init__.py
   utils/
@@ -112,10 +127,10 @@ AGENTS.md
 
 This requested layout supersedes the earlier `src/planlayer` proposal.
 `app.py` owns presentation, `services` orchestration, `engine` pure domain
-algorithms, and `database` persistence. `models` and `utils` remain placeholders.
-Only database initialization/health checks are implemented. The default local
+algorithms, and `database` persistence. `models` contains plain event dataclasses;
+`ui` contains forms/cards, and `utils` remains a placeholder. The default local
 SQLite path is `data/planlayer.db`; database files are never tracked by Git.
-The following use-case flow describes future feature work.
+The implemented flow is UI → EventService → EventRepository → SQLAlchemy → SQLite.
 A user action enters a service; the service loads data through persistence,
 passes plain typed values to domain functions, and returns results to the UI.
 Accepted changes are saved in a transaction. Use concrete, small modules
@@ -123,8 +138,8 @@ rather than a generic repository framework or dependency-injection container.
 
 SQLAlchemy owns database mapping. Domain dataclasses remain independent of
 ORM models. pandas prepares report tables; Plotly renders charts.
-python-dateutil supports bounded recurrence expansion, while the standard
-library's timezone facilities handle IANA timezone interpretation.
+python-dateutil remains an installed dependency for future recurrence work;
+no recurrence or timezone handling is implemented now.
 
 ## Temporal and interval rules
 
@@ -132,21 +147,17 @@ library's timezone facilities handle IANA timezone interpretation.
   are adjacent, not conflicting.
 - Two intervals overlap exactly when `a.start < b.end` and
   `b.start < a.end`. Require positive duration.
-- Store one-off instants in UTC through an explicit SQLAlchemy conversion
-  convention; SQLite does not supply reliable timezone semantics by itself.
-  Restore aware UTC values on reads and reject naive datetimes at boundaries.
-- Interpret visible days/weeks in the user's IANA timezone. A local day can
-  contain 23 or 25 elapsed hours; do not assume every day is 24 hours.
-- Store recurrence local start, timezone and elapsed duration so a weekly
-  09:00 commitment stays at 09:00 local time across daylight-saving changes.
-- For nonexistent local times during a DST change, request a valid replacement
-  for user input and skip that recurring occurrence with a visible warning.
-  For ambiguous local times, accept an explicit offset/fold; default recurrence
-  expansion to the first occurrence and document that choice in tests.
-- Query bounded windows, retain overlapping overnight occurrences, clip to
-  the calculation window, then merge busy intervals before measuring duration.
-- A preference timezone change changes display, not stored one-off instants
-  or the timezone attached to an existing recurring series.
+- Milestone 1 stores local naive Python datetimes in SQLite DateTime columns.
+  EventService rejects missing, non-datetime and timezone-aware inputs.
+  No UTC conversion or timezone preferences are implemented.
+- Range queries return complete records overlapping the half-open query range,
+  including events that start before it. They do not clip or change stored times.
+- Known limitation: local naive times cannot disambiguate daylight-saving
+  transitions or represent travel/multiple timezones reliably. System clock
+  changes also affect audit timestamps. Timezone support requires a later
+  explicit design and migration; do not reinterpret old records silently.
+- Future occupancy algorithms may merge/clip intervals, but Milestone 1 only
+  queries overlap with a range; it does not detect conflicts between events.
 
 ## Planned engines
 
@@ -185,7 +196,8 @@ it is not a health assessment.
 Preferences include timezone, week start, allowed task-planning windows,
 sleep window or target, meal windows/durations, and load threshold.
 Validate ranges and window consistency. The initial week starts Monday;
-timezone must be explicitly selected or confirmed before entering timed items.
+timezone selection belongs to a later timezone-support milestone; current
+Fixed Events use local naive times without a preference setting.
 
 Recommendations use user preferences and available gaps. They suggest sleep
 or meal windows and explain when no suitable gap exists. They never override
@@ -227,7 +239,7 @@ nullable "everything is an item" table.
 
 | Table | Conceptual contents |
 | --- | --- |
-| fixed_events | ID, title, notes, UTC start/end, creation/update timestamps; one-off commitments |
+| events (implemented) | ID, title, description, local naive start/end, category, location, local naive creation/update timestamps |
 | recurring_event_series | ID, title, notes, local start, IANA timezone, positive elapsed duration, recurrence rule and timestamps |
 | flexible_tasks | ID, title, notes, UTC deadline, estimated minutes, active/completed status, completion timestamp and timestamps |
 | scheduled_task_blocks | ID, unique task foreign key, UTC start/end and timestamps |
@@ -235,6 +247,8 @@ nullable "everything is an item" table.
 | user_preferences | One local user's timezone, week start, planning/sleep/meal settings and load threshold |
 
 Generated occurrences are not database rows in the initial design.
+Only `events` is implemented. UTC/timezone fields on the other conceptual
+tables are future proposals, not current runtime behavior.
 Represent preferences with a small validated schema; detailed window storage
 will be chosen when that milestone is implemented.
 
@@ -244,9 +258,12 @@ A task deletion deletes its linked block within the same transaction.
 Deleting a recurrence definition removes its virtual occurrences; confirmation
 belongs in the future UI because it affects an entire series.
 
-Enable SQLite foreign-key enforcement for every connection. Use transactions
-for multi-record operations. Define and version schema changes when persistence
-is introduced; do not silently recreate or discard user databases.
+Enable SQLite foreign-key enforcement for every connection. Repository writes
+commit on success and roll back on failure, with a new session per operation.
+Initialization uses SQLAlchemy `create_all` to add the events table without
+discarding existing data. No Alembic or migration framework is introduced.
+`create_all` cannot migrate existing columns; later schema changes need an
+explicit migration plan.
 Local database files must be excluded from version control.
 
 ## Development roadmap and acceptance gates
@@ -255,11 +272,13 @@ Each milestone requires an explicit implementation request. Dependencies below
 describe ordering, not permission to build ahead.
 
 1. **Specification (complete):** AGENTS.md and this product specification.
-2. **Milestone 0 — Project Foundation (current):** packaging/test/lint setup,
+2. **Milestone 0 — Project Foundation (complete):** packaging/test/lint setup,
    package placeholders, SQLite initialization/health check and minimal UI.
    No domain tables or planning features. Test isolated initialization and reruns.
-3. **Core records (future):** typed models and service CRUD for the three core types.
-   Verify validation and persistence round trips in temporary databases.
+3. **Milestone 1 — Fixed Events (current):** validated CRUD, chronological listing,
+   half-open range queries, local naive datetimes, persistent SQLite records,
+   create/edit form, confirmed deletion and empty state. Tasks/reminders deferred.
+   Verify persistence across a fresh process and all foundation checks.
 4. **Daily/weekly views and reminder layer:** display local-time events and
    reminders through services. Verify reminders never reserve calendar space
    and Streamlit reruns do not duplicate writes.
@@ -288,6 +307,5 @@ typed functions over unnecessary abstractions.
 The first implementation intentionally uses a single local user, unsplit task
 placements, a deterministic greedy scheduler, virtual recurrence occurrences,
 and in-app reminders. These choices keep the project understandable while
-leaving clear extension points. Only the foundation described above is implemented.
-The domain schema,
-engines and later product milestones remain unimplemented.
+leaving clear extension points. Only the foundation and Fixed Event CRUD are
+implemented. Scheduling engines and other product milestones remain unimplemented.

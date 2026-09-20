@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 from src.database.db import check_database_health, initialize_database
 
@@ -17,7 +17,7 @@ def test_initialization_creates_database_and_enables_foreign_keys(
         assert check_database_health(engine)
         with engine.connect() as connection:
             assert connection.scalar(text("PRAGMA foreign_keys")) == 1
-            assert connection.scalar(text("SELECT count(*) FROM sqlite_master")) == 0
+            assert inspect(connection).get_table_names() == ["events"]
         engine.dispose()
         with engine.connect() as connection:
             assert connection.scalar(text("PRAGMA foreign_keys")) == 1

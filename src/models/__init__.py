@@ -1,1 +1,1 @@
-"""Reserved for future data models; no item models are implemented yet."""
+"""Plain application models, independent of persistence and presentation."""

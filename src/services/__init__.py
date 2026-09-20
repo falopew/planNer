@@ -1,1 +1,1 @@
-"""Reserved for application use cases and orchestration."""
+"""Application validation and use-case orchestration."""
