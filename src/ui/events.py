@@ -10,18 +10,7 @@ from src.services.event_service import (
     EventStorageError,
     EventValidationError,
 )
-
-CATEGORIES = (
-    "University",
-    "Study",
-    "Sport",
-    "Work",
-    "Personal",
-    "Health",
-    "Social",
-    "Travel",
-    "Other",
-)
+from src.ui.categories import CATEGORIES
 
 
 def _finish(message: str) -> None:
@@ -119,7 +108,14 @@ def _confirm_delete(service: EventService) -> None:
         st.rerun()
 
 
-def _event_card(event: Event) -> None:
+def _select_event(event_id: int, action: str) -> None:
+    st.session_state["item_type"] = "Fixed Event"
+    st.session_state[f"{action}_event_id"] = event_id
+    if action == "editing":
+        st.session_state.pop("delete_event_id", None)
+
+
+def render_event_card(event: Event) -> None:
     with st.container(border=True):
         st.subheader(event.title)
         st.write(
@@ -131,17 +127,22 @@ def _event_card(event: Event) -> None:
             st.write(f"Location: {event.location}")
         if event.description:
             st.write(event.description)
-        if st.button("Edit", key=f"edit_{event.id}"):
-            st.session_state["editing_event_id"] = event.id
-            st.session_state.pop("delete_event_id", None)
-            st.rerun()
-        if st.button("Delete", key=f"delete_{event.id}"):
-            st.session_state["delete_event_id"] = event.id
-            st.rerun()
+        st.button(
+            "Edit",
+            key=f"edit_{event.id}",
+            on_click=_select_event,
+            args=(event.id, "editing"),
+        )
+        st.button(
+            "Delete",
+            key=f"delete_{event.id}",
+            on_click=_select_event,
+            args=(event.id, "delete"),
+        )
 
 
-def render_events(service: EventService) -> None:
-    """Render one create/edit form, confirmation prompt, and chronological cards."""
+def render_event_editor(service: EventService) -> None:
+    """Render one create/edit form and its deletion confirmation."""
     if notice := st.session_state.pop("event_notice", None):
         st.success(notice)
     try:
@@ -151,12 +152,6 @@ def render_events(service: EventService) -> None:
             st.session_state.pop("editing_event_id", None)
             st.info("That event no longer exists.")
         _event_form(service, event)
-        st.subheader("Saved events")
         _confirm_delete(service)
-        events = service.list_events()
-        if not events:
-            st.info("No events yet. Add your first event above.")
-        for saved in events:
-            _event_card(saved)
     except EventStorageError as error:
         st.error(str(error))

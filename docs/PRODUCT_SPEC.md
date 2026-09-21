@@ -6,9 +6,10 @@ PlanLayer is a smart personal calendar and life-planning application built as
 a university portfolio project. The repository name remains `planNer`.
 Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
 Milestone 1 adds persistent Fixed Event creation, editing, deletion, listing
-and range queries. Other item types, calendars and engines below remain planned.
+and range queries. Milestone 2 adds separate persistent Reminders and a mixed
+chronological display. Flexible Tasks, calendars and engines remain planned.
 
-Milestone 1 explicitly uses local naive datetimes, superseding the original
+Milestones 1–2 use local naive datetimes, superseding the original
 timezone-aware/UTC proposal. No conversion or timezone libraries are introduced.
 
 The product helps a person distinguish commitments, work that still needs
@@ -73,10 +74,29 @@ Completion does not automatically delete its recorded block.
 
 ### Reminders
 
-A Reminder has a reminder datetime and an active/dismissed state. It can be
-shown as a marker or list entry in daily/weekly views. Dismissal affects its
-presentation only. Even if its timestamp falls inside an event, it must never
-generate a scheduling conflict, subtract free time or increase load.
+A Reminder is an independent record containing id, title, description,
+reminder_datetime, category, created_at and updated_at. It has NO start/end,
+duration or active/dismissed fields in Milestone 2. Titles are trimmed, nonblank
+and at most 200 characters; blank category defaults to Other. Description is
+optional. All timestamps are local naive values. Edits preserve id/created_at
+and refresh updated_at. Deletion requires UI confirmation.
+
+Even inside an event or at another reminder's exact timestamp, it remains
+valid and visible. It never occupies time, creates conflicts, blocks scheduling,
+subtracts free time or increases load. It is not a zero-duration Fixed Event.
+The reminder repository queries only the reminders table; EventRepository
+continues to return events only.
+
+The UI offers a Fixed Event/Reminder selector, a single active editing form and
+a combined chronological list. Reminder cards use a bell and one timestamp;
+event cards retain start/end intervals. ScheduleService combines typed records
+only for display, with events before reminders at equal timestamps and ID as
+a stable tie-breaker. It performs no occupancy/conflict calculations.
+
+Reminder range selection uses `range_start <= reminder_datetime < range_end`.
+Invalid, missing or timezone-aware input is rejected by ReminderService using
+shared validation helpers, before persistence. No recurrence or notifications
+are implemented; dismissal/completion is also deferred.
 
 The initial reminder experience is in-app display when the app is open.
 It does not promise operating-system alarms or delivery while Streamlit is closed.
@@ -105,15 +125,23 @@ src/
     db.py
     models.py
     repositories.py
+    reminder_repository.py
   models/
     __init__.py
     event.py
+    reminder.py
   services/
     __init__.py
     event_service.py
+    reminder_service.py
+    schedule_service.py
+    validation.py
   ui/
     __init__.py
     events.py
+    reminders.py
+    schedule.py
+    categories.py
   engine/
     __init__.py
   utils/
@@ -131,6 +159,7 @@ algorithms, and `database` persistence. `models` contains plain event dataclasse
 `ui` contains forms/cards, and `utils` remains a placeholder. The default local
 SQLite path is `data/planlayer.db`; database files are never tracked by Git.
 The implemented flow is UI → EventService → EventRepository → SQLAlchemy → SQLite.
+The Reminder flow independently uses ReminderService and ReminderRepository.
 A user action enters a service; the service loads data through persistence,
 passes plain typed values to domain functions, and returns results to the UI.
 Accepted changes are saved in a transaction. Use concrete, small modules
@@ -147,8 +176,8 @@ no recurrence or timezone handling is implemented now.
   are adjacent, not conflicting.
 - Two intervals overlap exactly when `a.start < b.end` and
   `b.start < a.end`. Require positive duration.
-- Milestone 1 stores local naive Python datetimes in SQLite DateTime columns.
-  EventService rejects missing, non-datetime and timezone-aware inputs.
+- Milestones 1–2 store local naive Python datetimes in SQLite DateTime columns.
+  EventService and ReminderService reject missing, non-datetime and timezone-aware inputs.
   No UTC conversion or timezone preferences are implemented.
 - Range queries return complete records overlapping the half-open query range,
   including events that start before it. They do not clip or change stored times.
@@ -243,11 +272,11 @@ nullable "everything is an item" table.
 | recurring_event_series | ID, title, notes, local start, IANA timezone, positive elapsed duration, recurrence rule and timestamps |
 | flexible_tasks | ID, title, notes, UTC deadline, estimated minutes, active/completed status, completion timestamp and timestamps |
 | scheduled_task_blocks | ID, unique task foreign key, UTC start/end and timestamps |
-| reminders | ID, title, notes, UTC reminder time, active/dismissed state and timestamps |
+| reminders (implemented) | ID, title, description, local naive reminder_datetime, category, local naive created_at/updated_at; no end or duration |
 | user_preferences | One local user's timezone, week start, planning/sleep/meal settings and load threshold |
 
 Generated occurrences are not database rows in the initial design.
-Only `events` is implemented. UTC/timezone fields on the other conceptual
+Only `events` and `reminders` are implemented. UTC/timezone fields on other conceptual
 tables are future proposals, not current runtime behavior.
 Represent preferences with a small validated schema; detailed window storage
 will be chosen when that milestone is implemented.
@@ -260,7 +289,7 @@ belongs in the future UI because it affects an entire series.
 
 Enable SQLite foreign-key enforcement for every connection. Repository writes
 commit on success and roll back on failure, with a new session per operation.
-Initialization uses SQLAlchemy `create_all` to add the events table without
+Initialization uses SQLAlchemy `create_all` to add missing events/reminders tables without
 discarding existing data. No Alembic or migration framework is introduced.
 `create_all` cannot migrate existing columns; later schema changes need an
 explicit migration plan.
@@ -275,13 +304,15 @@ describe ordering, not permission to build ahead.
 2. **Milestone 0 — Project Foundation (complete):** packaging/test/lint setup,
    package placeholders, SQLite initialization/health check and minimal UI.
    No domain tables or planning features. Test isolated initialization and reruns.
-3. **Milestone 1 — Fixed Events (current):** validated CRUD, chronological listing,
+3. **Milestone 1 — Fixed Events (complete):** validated CRUD, chronological listing,
    half-open range queries, local naive datetimes, persistent SQLite records,
    create/edit form, confirmed deletion and empty state. Tasks/reminders deferred.
    Verify persistence across a fresh process and all foundation checks.
-4. **Daily/weekly views and reminder layer:** display local-time events and
-   reminders through services. Verify reminders never reserve calendar space
-   and Streamlit reruns do not duplicate writes.
+4. **Milestone 2 — Reminder Layer (current):** independent reminder CRUD,
+   local naive timestamps, half-open timestamp range queries, a mixed chronological
+   display and confirmed deletion. No recurrence, notifications or occupied time.
+   Verify event coexistence, identical timestamps, database upgrades, persistence
+   and all existing event tests. Daily/weekly calendar views remain future work.
 5. **Recurring events:** daily/weekly series and bounded expansion.
    Verify overnight overlap, termination limits and DST policy.
 6. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
@@ -308,4 +339,5 @@ The first implementation intentionally uses a single local user, unsplit task
 placements, a deterministic greedy scheduler, virtual recurrence occurrences,
 and in-app reminders. These choices keep the project understandable while
 leaving clear extension points. Only the foundation and Fixed Event CRUD are
-implemented. Scheduling engines and other product milestones remain unimplemented.
+implemented together with the Reminder Layer. Scheduling engines and other product
+milestones remain unimplemented.
