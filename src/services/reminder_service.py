@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.reminder_repository import ReminderRepository
+from src.engine.recurrence import normalize_recurrence_rule
+from src.models.recurrence import RecurrenceValidationError
 from src.models.reminder import Reminder, ReminderInput
 from src.services.validation import (
     InputValidationError,
@@ -33,9 +35,16 @@ def _storage_errors() -> Iterator[None]:
 
 
 def _normalize(data: ReminderInput) -> ReminderInput:
+    title = validate_title(data.title)
+    moment = validate_local_datetime(data.reminder_datetime, "Reminder")
+    try:
+        rule = normalize_recurrence_rule(data.recurrence_rule, moment)
+    except RecurrenceValidationError as error:
+        raise ReminderValidationError(str(error)) from error
     return ReminderInput(
-        title=validate_title(data.title),
-        reminder_datetime=validate_local_datetime(data.reminder_datetime, "Reminder"),
+        title=title,
+        reminder_datetime=moment,
+        recurrence_rule=rule,
         description=normalize_text(data.description, "Description"),
         category=normalize_text(data.category, "Category") or "Other",
     )
@@ -74,3 +83,8 @@ class ReminderService:
     def delete_reminder(self, reminder_id: int) -> bool:
         with _storage_errors():
             return self._repository.delete_reminder(reminder_id)
+
+    def list_recurring_reminders(self, before: datetime) -> list[Reminder]:
+        validate_local_datetime(before, "Range end")
+        with _storage_errors():
+            return self._repository.list_recurring_reminders(before)

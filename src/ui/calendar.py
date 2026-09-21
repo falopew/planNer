@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import streamlit as st
 
 from src.models.event import Event
+from src.models.recurrence import RecurrenceValidationError
 from src.models.reminder import Reminder
 from src.services.event_service import EventStorageError
 from src.services.reminder_service import ReminderStorageError
@@ -112,7 +113,11 @@ def render_today(service: ScheduleService) -> None:
     st.button("Tomorrow", on_click=_open_tomorrow, args=(today,))
     try:
         _render_day(service, today)
-    except (EventStorageError, ReminderStorageError) as error:
+    except (
+        EventStorageError,
+        ReminderStorageError,
+        RecurrenceValidationError,
+    ) as error:
         st.error(str(error))
 
 
@@ -137,5 +142,9 @@ def render_calendar(service: ScheduleService) -> None:
         for day, items in days.items():
             st.subheader(day.strftime("%A, %d %B"))
             _render_items(items, "No items")
-    except (EventStorageError, ReminderStorageError) as error:
+    except (
+        EventStorageError,
+        ReminderStorageError,
+        RecurrenceValidationError,
+    ) as error:
         st.error(str(error))

@@ -19,6 +19,7 @@ def _to_reminder(record: ReminderRecord) -> Reminder:
         category=record.category,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        recurrence_rule=record.recurrence_rule,
     )
 
 
@@ -86,3 +87,13 @@ class ReminderRepository:
                 return False
             session.delete(record)
         return True
+
+    def list_recurring_reminders(self, before: datetime) -> list[Reminder]:
+        with self._sessions() as session:
+            records = session.scalars(
+                select(ReminderRecord).where(
+                    ReminderRecord.recurrence_rule.is_not(None),
+                    ReminderRecord.reminder_datetime < before,
+                )
+            )
+            return [_to_reminder(record) for record in records]

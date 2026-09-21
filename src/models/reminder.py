@@ -10,6 +10,7 @@ class ReminderInput:
     reminder_datetime: datetime | None
     description: str = ""
     category: str = "Other"
+    recurrence_rule: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -1,9 +1,11 @@
 """Reminder forms and lightweight point-in-time cards."""
 
+from dataclasses import replace
 from datetime import date, datetime
 
 import streamlit as st
 
+from src.models.recurrence import RecurrenceValidationError
 from src.models.reminder import Reminder, ReminderInput
 from src.services.reminder_service import (
     ReminderService,
@@ -11,6 +13,7 @@ from src.services.reminder_service import (
     ReminderValidationError,
 )
 from src.ui.categories import CATEGORIES
+from src.ui.recurrence import render_recurrence_controls, rule_from_controls
 
 
 def _finish(message: str) -> None:
@@ -34,27 +37,45 @@ def _form(service: ReminderService, reminder: Reminder | None) -> None:
     categories = list(CATEGORIES)
     if reminder and reminder.category not in categories:
         categories.append(reminder.category)
-    with st.form(f"reminder_form_{reminder.id if reminder else 'new'}_{version}"):
+    form_key = f"reminder_form_{reminder.id if reminder else 'new'}_{version}"
+    with st.container():
         title = st.text_input(
-            "Title", value=reminder.title if reminder else "", max_chars=200
+            "Title",
+            value=reminder.title if reminder else "",
+            max_chars=200,
+            key=f"{form_key}_title",
         )
         description = st.text_area(
-            "Description", value=reminder.description if reminder else ""
+            "Description",
+            value=reminder.description if reminder else "",
+            key=f"{form_key}_description",
         )
         day = st.date_input(
             "Date",
             value=reminder.reminder_datetime.date() if reminder else date.today(),
+            key=f"{form_key}_date",
         )
         moment = st.time_input(
-            "Time", value=reminder.reminder_datetime.time() if reminder else None
+            "Time",
+            value=reminder.reminder_datetime.time() if reminder else None,
+            key=f"{form_key}_time",
         )
         category = st.selectbox(
             "Category",
             categories,
             index=categories.index(reminder.category if reminder else "Other"),
+            key=f"{form_key}_category",
         )
-        submitted = st.form_submit_button(
-            "Save reminder changes" if reminder else "Create reminder"
+        recurrence = render_recurrence_controls(
+            form_key,
+            reminder.recurrence_rule if reminder else None,
+            reminder.reminder_datetime if reminder else None,
+        )
+        if reminder and reminder.recurrence_rule:
+            st.caption("Editing recurrence changes the entire series.")
+        submitted = st.button(
+            "Save reminder changes" if reminder else "Create reminder",
+            key=f"{form_key}_save",
         )
     if not submitted:
         return
@@ -67,6 +88,9 @@ def _form(service: ReminderService, reminder: Reminder | None) -> None:
         else None,
     )
     try:
+        data = replace(
+            data, recurrence_rule=rule_from_controls(recurrence, data.reminder_datetime)
+        )
         if reminder:
             saved = service.update_reminder(reminder.id, data)
             message = (
@@ -75,7 +99,11 @@ def _form(service: ReminderService, reminder: Reminder | None) -> None:
         else:
             service.create_reminder(data)
             message = "Reminder created."
-    except (ReminderValidationError, ReminderStorageError) as error:
+    except (
+        ReminderValidationError,
+        ReminderStorageError,
+        RecurrenceValidationError,
+    ) as error:
         st.error(str(error))
         return
     _finish(message)
@@ -91,6 +119,8 @@ def _confirm_delete(service: ReminderService) -> None:
         st.info("That reminder no longer exists.")
         return
     st.warning(f'Delete reminder "{reminder.title}"? This cannot be undone.')
+    if reminder.recurrence_rule:
+        st.warning("This will delete the recurring series and all its occurrences.")
     if st.button("Confirm reminder deletion", key=f"confirm_reminder_{reminder.id}"):
         deleted = service.delete_reminder(reminder.id)
         _finish("Reminder deleted." if deleted else "That reminder no longer exists.")
@@ -111,6 +141,8 @@ def render_reminder_card(reminder: Reminder) -> None:
         st.subheader(f"🔔 {reminder.title}")
         st.write(f"{reminder.reminder_datetime:%d %b %Y, %H:%M}")
         st.caption(f"Reminder · {reminder.category} · No occupied time")
+        if reminder.recurrence_rule:
+            st.caption("Repeating series · edit/delete affects all occurrences")
         if reminder.description:
             st.write(reminder.description)
         st.button(
@@ -139,5 +171,5 @@ def render_reminder_editor(service: ReminderService) -> None:
             st.info("That reminder no longer exists.")
         _form(service, reminder)
         _confirm_delete(service)
-    except ReminderStorageError as error:
+    except (ReminderStorageError, RecurrenceValidationError) as error:
         st.error(str(error))

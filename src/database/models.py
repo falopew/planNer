@@ -25,6 +25,7 @@ class EventRecord(Base):
     end_datetime: Mapped[datetime] = mapped_column(DateTime)
     category: Mapped[str] = mapped_column(String, default="Other")
     location: Mapped[str] = mapped_column(String, default="")
+    recurrence_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
@@ -40,6 +41,7 @@ class ReminderRecord(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     reminder_datetime: Mapped[datetime] = mapped_column(DateTime, index=True)
+    recurrence_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String, default="Other")
     created_at: Mapped[datetime] = mapped_column(DateTime)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
