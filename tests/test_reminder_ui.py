@@ -14,6 +14,11 @@ from src.services.reminder_service import ReminderService, ReminderStorageError
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
+def crud_app() -> AppTest:
+    app = AppTest.from_file(str(APP_PATH)).run()
+    return app.radio(key="page").set_value("Events / Add Item").run()
+
+
 def click(app: AppTest, label: str) -> AppTest:
     next(button for button in app.button if button.label == label).click()
     return app.run()
@@ -24,8 +29,8 @@ def reminder_app(tmp_path: Path, monkeypatch: MonkeyPatch) -> AppTest:
     monkeypatch.setattr(
         db, "initialize_database", lambda: initialize(tmp_path / "planlayer.db")
     )
-    app = AppTest.from_file(str(APP_PATH)).run()
-    app.radio[0].set_value("Reminder").run()
+    app = crud_app()
+    app.radio(key="item_type").set_value("Reminder").run()
     return app
 
 
@@ -47,10 +52,10 @@ def test_reminder_crud_and_restart(tmp_path: Path, monkeypatch: MonkeyPatch) -> 
         assert len(ReminderRepository(engine).list_reminders()) == 1
     finally:
         engine.dispose()
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any(item.value == "🔔 Take medication" for item in app.subheader)
     click(app, "Edit reminder")
-    assert app.radio[0].value == "Reminder"
+    assert app.radio(key="item_type").value == "Reminder"
     assert app.text_input[0].value == "Take medication"
     app.text_input[0].set_value("Bring shoes")
     app.time_input[0].set_value(time(18, 30))
@@ -66,7 +71,7 @@ def test_reminder_crud_and_restart(tmp_path: Path, monkeypatch: MonkeyPatch) -> 
     click(app, "Delete reminder")
     click(app, "Confirm reminder deletion")
     assert not app.exception
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any(item.value == "No reminders yet." for item in app.info)
 
 
@@ -94,12 +99,12 @@ def test_reminder_inside_event_and_type_switching(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     app = reminder_app(tmp_path, monkeypatch)
-    app.radio[0].set_value("Fixed Event").run()
+    app.radio(key="item_type").set_value("Fixed Event").run()
     app.text_input[0].set_value("Lecture")
     app.time_input[0].set_value(time(10))
     app.time_input[1].set_value(time(12))
     click(app, "Create event")
-    app.radio[0].set_value("Reminder").run()
+    app.radio(key="item_type").set_value("Reminder").run()
     for title in ("Take medication", "Submit form"):
         app.text_input[0].set_value(title)
         app.time_input[0].set_value(time(11))
@@ -109,10 +114,10 @@ def test_reminder_inside_event_and_type_switching(
     assert not app.error
     assert not app.warning
     click(app, "Edit")
-    assert app.radio[0].value == "Fixed Event"
+    assert app.radio(key="item_type").value == "Fixed Event"
     assert app.text_input[0].value == "Lecture"
     click(app, "Cancel editing")
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert [item.value for item in app.subheader][-3:] == titles[-3:]
 
 

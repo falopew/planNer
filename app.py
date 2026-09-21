@@ -9,6 +9,7 @@ from src.database.repositories import EventRepository
 from src.services.event_service import EventService
 from src.services.reminder_service import ReminderService
 from src.services.schedule_service import ScheduleService
+from src.ui.calendar import render_calendar, render_today
 from src.ui.events import render_event_editor
 from src.ui.reminders import render_reminder_editor
 from src.ui.schedule import render_schedule
@@ -34,11 +35,21 @@ def main() -> None:
             st.error("Database connection check failed.")
             return
         st.caption(
-            "Milestone 2: Fixed Events and Reminders. "
+            "Milestone 3: Day & Week Calendar Views. "
             "Times are local, without timezone conversion."
         )
         events = EventService(EventRepository(engine))
         reminders = ReminderService(ReminderRepository(engine))
+        schedule = ScheduleService(events, reminders)
+        page = st.sidebar.radio(
+            "Navigate", ("Today", "Calendar", "Events / Add Item"), key="page"
+        )
+        if page == "Today":
+            render_today(schedule)
+            return
+        if page == "Calendar":
+            render_calendar(schedule)
+            return
         item_type = st.radio(
             "Add item", ("Fixed Event", "Reminder"), horizontal=True, key="item_type"
         )
@@ -46,7 +57,7 @@ def main() -> None:
             render_event_editor(events)
         else:
             render_reminder_editor(reminders)
-        render_schedule(ScheduleService(events, reminders))
+        render_schedule(schedule)
     finally:
         engine.dispose()
 

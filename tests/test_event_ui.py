@@ -13,6 +13,11 @@ from src.services.event_service import EventService, EventStorageError
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
+def crud_app() -> AppTest:
+    app = AppTest.from_file(str(APP_PATH)).run()
+    return app.radio(key="page").set_value("Events / Add Item").run()
+
+
 def click(app: AppTest, label: str) -> AppTest:
     next(button for button in app.button if button.label == label).click()
     return app.run()
@@ -24,7 +29,7 @@ def test_create_edit_cancel_delete_and_restart(
     path = tmp_path / "planlayer.db"
     initialize = db.initialize_database
     monkeypatch.setattr(db, "initialize_database", lambda: initialize(path))
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any("No events yet" in message.value for message in app.info)
     app.text_input[0].set_value("Football Training")
     app.text_input[1].set_value("Football Pitch")
@@ -43,7 +48,7 @@ def test_create_edit_cancel_delete_and_restart(
         engine.dispose()
 
     # A fresh Streamlit session has no shared UI state but sees the saved event.
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any(item.value == "Football Training" for item in app.subheader)
     click(app, "Edit")
     assert app.text_input[0].value == "Football Training"
@@ -63,7 +68,7 @@ def test_create_edit_cancel_delete_and_restart(
     click(app, "Confirm deletion")
     assert not app.exception
     assert any("No events yet" in item.value for item in app.info)
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any("No events yet" in item.value for item in app.info)
 
 
@@ -72,13 +77,13 @@ def test_missing_date_is_a_safe_validation_error(
 ) -> None:
     initialize = db.initialize_database
     monkeypatch.setattr(db, "initialize_database", lambda: initialize(tmp_path / "db"))
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     app.text_input[0].set_value("Training")
     app.date_input[0].set_value(None)
     click(app, "Create event")
     assert not app.exception
     assert app.error[0].value == "Start date and time are required."
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert any("No events yet" in item.value for item in app.info)
 
 
@@ -88,7 +93,7 @@ def test_validation_message_and_no_insert(
     initialize = db.initialize_database
     path = tmp_path / "planlayer.db"
     monkeypatch.setattr(db, "initialize_database", lambda: initialize(path))
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     click(app, "Create event")
     assert not app.exception
     assert app.error[0].value == "Title must not be empty."
@@ -110,6 +115,6 @@ def test_storage_error_is_displayed_safely(
         raise EventStorageError("Could not access saved events.")
 
     monkeypatch.setattr(EventService, "list_events", fail)
-    app = AppTest.from_file(str(APP_PATH)).run()
+    app = crud_app()
     assert not app.exception
     assert app.error[0].value == "Could not access saved events."
