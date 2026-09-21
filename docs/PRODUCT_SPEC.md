@@ -7,9 +7,10 @@ a university portfolio project. The repository name remains `planNer`.
 Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
 Milestone 1 adds persistent Fixed Event creation, editing, deletion, listing
 and range queries. Milestone 2 adds separate persistent Reminders and a mixed
-chronological display. Flexible Tasks, calendars and engines remain planned.
+chronological display. Milestone 3 adds Today/Tomorrow, selected Day and Week
+agendas. Flexible Tasks and scheduling engines remain planned.
 
-Milestones 1–2 use local naive datetimes, superseding the original
+Milestones 1–3 use local naive datetimes, superseding the original
 timezone-aware/UTC proposal. No conversion or timezone libraries are introduced.
 
 The product helps a person distinguish commitments, work that still needs
@@ -141,11 +142,13 @@ src/
     events.py
     reminders.py
     schedule.py
+    calendar.py
     categories.py
   engine/
     __init__.py
   utils/
     __init__.py
+    time_utils.py
 tests/
 data/
 assets/
@@ -156,7 +159,8 @@ AGENTS.md
 This requested layout supersedes the earlier `src/planlayer` proposal.
 `app.py` owns presentation, `services` orchestration, `engine` pure domain
 algorithms, and `database` persistence. `models` contains plain event dataclasses;
-`ui` contains forms/cards, and `utils` remains a placeholder. The default local
+`ui` contains forms/cards and calendar agendas; `utils/time_utils.py` centralizes
+local day bounds, Monday normalization and week bounds. The default local
 SQLite path is `data/planlayer.db`; database files are never tracked by Git.
 The implemented flow is UI → EventService → EventRepository → SQLAlchemy → SQLite.
 The Reminder flow independently uses ReminderService and ReminderRepository.
@@ -170,13 +174,37 @@ ORM models. pandas prepares report tables; Plotly renders charts.
 python-dateutil remains an installed dependency for future recurrence work;
 no recurrence or timezone handling is implemented now.
 
+## Calendar views (Milestone 3)
+
+Today is the default sidebar destination; Tomorrow opens Calendar's Day view.
+Calendar offers Day and Week, date selection, previous/next navigation, and
+Today/Current Week reset. Events / Add Item retains both existing CRUD workflows.
+No placeholder Settings/Analytics pages, calendar editing, grid or new schema.
+
+Calendar UI calls only ScheduleService. Its combined bounded query delegates to
+EventService and ReminderService. Day uses `[midnight, next midnight)`; Week
+normalizes any selected date to Monday and returns an ordered mapping of seven
+dates to day schedules. It reuses day queries (14 small bounded queries per week)
+to avoid duplicating range predicates. The week ends at next Monday, excluded.
+
+Existing Event/Reminder dataclasses are the shared typed display representation;
+no additional model/table is needed. Items sort by original event start/reminder
+instant, then Event before Reminder, then ID within type. An overnight event
+appears once per overlapping day with its original endpoints, including dates.
+Reminders are lighter, bell-labelled single instants with no duration block.
+Category and optional notes/location are visible; IDs/audit times are hidden.
+Empty days have explicit messages. Navigation never writes item records.
+
+This is display/navigation only, not conflict detection, occupancy calculation,
+recurrence, task scheduling, analytics or notifications. Datetimes stay local naive.
+
 ## Temporal and interval rules
 
 - Use half-open intervals `[start, end)`: 10:00–11:00 and 11:00–12:00
   are adjacent, not conflicting.
 - Two intervals overlap exactly when `a.start < b.end` and
   `b.start < a.end`. Require positive duration.
-- Milestones 1–2 store local naive Python datetimes in SQLite DateTime columns.
+- Milestones 1–3 store local naive Python datetimes in SQLite DateTime columns.
   EventService and ReminderService reject missing, non-datetime and timezone-aware inputs.
   No UTC conversion or timezone preferences are implemented.
 - Range queries return complete records overlapping the half-open query range,
@@ -308,23 +336,28 @@ describe ordering, not permission to build ahead.
    half-open range queries, local naive datetimes, persistent SQLite records,
    create/edit form, confirmed deletion and empty state. Tasks/reminders deferred.
    Verify persistence across a fresh process and all foundation checks.
-4. **Milestone 2 — Reminder Layer (current):** independent reminder CRUD,
+4. **Milestone 2 — Reminder Layer (complete):** independent reminder CRUD,
    local naive timestamps, half-open timestamp range queries, a mixed chronological
    display and confirmed deletion. No recurrence, notifications or occupied time.
    Verify event coexistence, identical timestamps, database upgrades, persistence
-   and all existing event tests. Daily/weekly calendar views remain future work.
-5. **Recurring events:** daily/weekly series and bounded expansion.
+   and all existing event tests.
+5. **Milestone 3 — Day & Week Calendar Views (current):** Today/Tomorrow,
+   selected-day and Monday–Sunday agendas via ScheduleService, with read-only
+   date navigation, deterministic combined ordering and distinct reminder styling.
+   Verify midnight boundaries, overnight overlap, empty days, week selection,
+   no navigation mutations and all existing CRUD tests.
+6. **Recurring events:** daily/weekly series and bounded expansion.
    Verify overnight overlap, termination limits and DST policy.
-6. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
+7. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
    and daily load. Verify adjacency, containment, cross-day clipping,
    zero capacity and no double-counting.
-7. **Preferences and recommendations:** configurable planning/sleep/meal
+8. **Preferences and recommendations:** configurable planning/sleep/meal
    windows and deterministic suggestions. Verify impossible recommendations
    are explained and suggestions do not mutate occupancy.
-8. **Flexible task scheduling:** proposals, explicit acceptance, unscheduling
+9. **Flexible task scheduling:** proposals, explicit acceptance, unscheduling
    and collision reporting for accepted blocks. Verify deadline boundaries,
    tie-breaking, occupied gaps and insufficient contiguous capacity.
-9. **Weekly analytics and portfolio polish:** pandas/Plotly reporting,
+10. **Weekly analytics and portfolio polish:** pandas/Plotly reporting,
    documented metric definitions, example walkthrough and interview-ready
    explanation. Verify report aggregates against domain results.
 
@@ -339,5 +372,5 @@ The first implementation intentionally uses a single local user, unsplit task
 placements, a deterministic greedy scheduler, virtual recurrence occurrences,
 and in-app reminders. These choices keep the project understandable while
 leaving clear extension points. Only the foundation and Fixed Event CRUD are
-implemented together with the Reminder Layer. Scheduling engines and other product
+implemented together with the Reminder Layer and read-only calendar agendas. Scheduling engines and other product
 milestones remain unimplemented.

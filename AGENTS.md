@@ -8,9 +8,10 @@ Read `docs/PRODUCT_SPEC.md` before changing application behavior.
 
 Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
 Milestone 1 supplies persistent Fixed Event CRUD. Milestone 2 adds only persistent
-Reminder CRUD and a mixed chronological display. A roadmap is
+Reminder CRUD and a mixed chronological display. Milestone 3 adds read-only
+Today/Tomorrow, selected-day and Monday–Sunday week agendas. A roadmap is
 not authorization to implement it. Complete only the milestone requested.
-Work for Milestone 2 belongs on `milestone-2-reminders`, with a Pull Request
+Work for Milestone 3 belongs on `milestone-3-calendar-views`, with a Pull Request
 against `main`. Do not commit to main or merge the PR automatically.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
@@ -32,7 +33,7 @@ without an explicit request.
 - Milestone 2 adds no dismissal/completion state, notifications, recurrence,
   scheduling, load or gap calculations. Reminders are in-app information only.
 - Use half-open intervals `[start, end)`. Adjacent intervals do not overlap.
-- Events require `end > start`. Milestones 1–2 use local naive datetimes
+- Events require `end > start`. Milestones 1–3 use local naive datetimes
   everywhere, including creation/update timestamps. Reject timezone-aware input.
   Do not add timezone conversion or UTC storage without a later request.
 - Preserve the distinction between fixed-event conflicts and task-block
@@ -43,6 +44,14 @@ without an explicit request.
   supersedes the original specification's timezone proposal for this milestone.
 - Recommendations and scheduling must be deterministic and explainable.
   Inject the current time into algorithms instead of reading the clock inside them.
+
+- Calendar UI calls ScheduleService only; it must not query repositories or
+  duplicate date-range filtering. Reuse the day query for week agendas.
+- Day ranges are midnight to next midnight; weeks are Monday to next Monday.
+  Include overlapping events, with reminders selected by their single timestamp.
+  Sort by original start/reminder time, then Event before Reminder, then ID.
+- Calendar navigation is read-only. Preserve CRUD under Events / Add Item.
+  No grid, inline editing, recurrence, conflicts, analytics or scheduling in M3.
 
 ## Stack and boundaries
 
@@ -61,8 +70,9 @@ Planned layers:
   algorithms; no Streamlit, SQLAlchemy, database access or network calls.
 - `src/database/`: SQLAlchemy mappings, queries and session setup.
 
-The requested foundation uses a literal `src` package. `src/utils/` remains
-reserved for small helpers. ORM models and concrete repositories live under
+The requested foundation uses a literal `src` package.
+`src/utils/time_utils.py` centralizes day/week boundaries.
+ORM models and concrete repositories live under
 `src/database/`; repository write operations own short-lived transactions.
 UI calls services; services use domain algorithms and persistence.
 Persistence must not import UI. Domain must not import services or persistence.

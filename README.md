@@ -1,15 +1,16 @@
 # PlanLayer
 
-A personal calendar and life-planning portfolio project. Future milestones
-will distinguish Fixed Events, Flexible Tasks and Reminders and add calendar
-views and explainable scheduling. No LLM/AI functionality is included.
+A personal calendar and life-planning portfolio project. It distinguishes Fixed Events and
+Reminders in daily/weekly agendas. Flexible Tasks and explainable scheduling
+remain future milestones. No LLM/AI functionality is included.
 
 ## Current status
 
-Milestone 2 — Reminder Layer: persistent Fixed Events and Reminders with creation,
-editing, confirmed deletion, chronological display, range queries and validation.
+Milestone 3 — Day & Week Calendar Views: Today (default), a Tomorrow shortcut,
+selected Day and Monday–Sunday Week agendas. Persistent Fixed Event and Reminder
+creation, editing, confirmed deletion, range queries and validation remain available.
 SQLite initialization, health checks and all foundation behavior remain available.
-Tasks, conflict detection, calendars, scheduling and recommendations
+Tasks, recurrence, conflict detection, scheduling and recommendations
 are **not implemented**.
 
 ## Architecture
@@ -18,11 +19,12 @@ are **not implemented**.
 app.py                  Streamlit presentation entry point
 src/ui/events.py        Single create/edit form, event cards and delete confirmation
 src/ui/reminders.py     Reminder form and bell-labelled single-time cards
-src/ui/schedule.py      Mixed chronological display preserving item types
+src/ui/schedule.py      Mixed CRUD list preserving item types
+src/ui/calendar.py      Read-only Today/Day/Week agendas and navigation
 src/ui/categories.py    Shared suggested category strings
 src/__init__.py         Application package
 src/database/db.py      SQLAlchemy engine, SQLite initialization and health check
-src/database/models.py  SQLAlchemy events table and constraints
+src/database/models.py  SQLAlchemy events/reminders tables and constraints
 src/database/repositories.py  Transactional event CRUD and overlap queries
 src/database/reminder_repository.py  Independent reminder CRUD and timestamp queries
 src/models/event.py     Plain EventInput and saved Event dataclasses
@@ -30,15 +32,17 @@ src/models/reminder.py  Separate ReminderInput and saved Reminder dataclasses
 src/services/event_service.py  Input validation and safe application operations
 src/services/reminder_service.py  Reminder validation and safe operations
 src/services/validation.py  Small shared title/text/local-datetime rules
-src/services/schedule_service.py  Typed display ordering (not a scheduling engine)
+src/services/schedule_service.py  Combined range/day/week queries (not a scheduling engine)
 src/engine/             Reserved for pure domain/scheduling algorithms
-src/utils/              Reserved for small shared helpers
+src/utils/time_utils.py  Local midnight bounds and Monday-based weeks
 tests/test_database.py  Isolated SQLite tests
 tests/test_app.py       Streamlit success, rerun and failure smoke tests
 tests/test_events.py    Validation, CRUD, range and fresh-process persistence tests
 tests/test_event_ui.py  Form workflows, fresh UI session and safe errors
 tests/test_reminders.py  Reminder CRUD, boundaries, coexistence and schema upgrade
 tests/test_reminder_ui.py  Reminder forms and mixed schedule interactions
+tests/test_schedule.py  Ordering, day/week boundaries, overlap and no mutation
+tests/test_calendar_ui.py  Today/day/week navigation, rendering and safe errors
 data/                   Local database (ignored by Git)
 assets/                 Reserved for visual assets
 ```
@@ -84,6 +88,30 @@ The literal `src` package follows the requested foundation layout; it is not
 the conventional `src/planlayer` packaging layout. Future algorithms will be
 added only in their requested milestones.
 
+## Calendar behavior
+
+Navigation is **Today → Calendar (Day / Week) → Events / Add Item** via the sidebar.
+Today is the default; Tomorrow opens tomorrow in the same Day view. Day offers a
+picker and Previous Day / Today / Next Day. Week accepts any date in the desired
+week and offers Previous Week / Current Week / Next Week. Seven stacked agendas
+keep entries readable; empty days remain visible. Calendar pages have no edit controls.
+
+Calendar UI → ScheduleService → EventService / ReminderService → repositories → SQLite.
+`get_schedule_between(start, end)` combines existing bounded queries;
+`get_day_schedule(date)` uses local midnight up to (excluding) next midnight.
+`get_week_schedule(date)` normalizes to Monday and returns seven ordered date/list
+pairs, using the day query for each. This intentionally makes 14 small bounded
+queries per week instead of duplicating interval filtering. No new table or
+normalization wrapper is needed: existing Event/Reminder dataclasses retain their types.
+
+Weeks span Monday 00:00 through next Monday 00:00, excluding the latter. Events
+use overlap semantics; reminders use timestamp inclusion. Overnight events appear
+once on each overlapping day with their full original date/time endpoints. Order
+uses the original event start or reminder time, then Event before Reminder, then
+ID within type. IDs and audit timestamps are never shown in calendar agendas.
+Reminders use a bell, one time and no bordered duration block. Navigating does not
+write item records. All dates/times remain local naive values.
+
 ## Installation (Python 3.12+)
 
 From PowerShell on Windows:
@@ -92,7 +120,7 @@ From PowerShell on Windows:
 git clone https://github.com/falopew/planNer.git
 cd planNer
 git fetch origin
-git switch milestone-2-reminders
+git switch milestone-3-calendar-views
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -124,8 +152,8 @@ On macOS/Linux:
 .venv/bin/python -m streamlit run app.py
 ```
 
-Open http://localhost:8501. Choose Fixed Event or Reminder with the Add item
-selector. A reminder needs an explicit time selection. Both types appear in the
+Open http://localhost:8501. Today opens by default. Use Calendar for Day/Week
+navigation. Open Events / Add Item and choose Fixed Event or Reminder with the selector. A reminder needs an explicit time selection. Both types appear in the
 current schedule. Edit selects the appropriate form; cancellation abandons changes. Delete
 requires confirmation. Stop the server with Ctrl+C.
 
@@ -160,11 +188,14 @@ Tests use temporary databases and never touch `data/planlayer.db`.
 ## Known limitations
 
 - All event, reminder and audit datetimes are local naive values. No timezone
-  conversion, DST disambiguation or UTC storage. This is the Milestones 1–2 policy.
+  conversion, DST disambiguation or UTC storage. This is the Milestones 1–3 policy.
 - Reminders are stored in-app information only: no alarms, email, sound,
   OS notifications or background delivery. They do not recur or have a dismissal state.
 - Creation uses one date for start/end. The service accepts overnight intervals;
   editing such a saved interval shows an extra end-date field to preserve it.
+- Calendar is an agenda, not an hourly grid. No drag/drop or inline editing.
+  The picker excludes seven days at each extreme of Python's date range so
+  previous/next navigation and exclusive week ends remain representable.
 - Category is a simple string; there is no Category table.
 - There is no conflict detection, recurrence, pagination or multi-user edit
   coordination. Overlapping commitments are allowed and are not flagged yet.
@@ -173,7 +204,7 @@ Tests use temporary databases and never touch `data/planlayer.db`.
 ## Manual verification
 
 1. Start the app and verify a successful database status and the friendly empty state.
-2. Create Football Training, 25 Sep 2026, 19:00–21:00, category Sport; add description/location.
+2. Open Events / Add Item. Create Football Training, 25 Sep 2026, 19:00–21:00, category Sport; add description/location.
 3. Verify all values appear in the saved event card. Refresh; no duplicate should appear.
 4. Submit a blank/whitespace title, equal times, and reversed times; verify clear errors.
 5. Edit the event title/time and save. Cancel a second edit and verify no saved changes.
@@ -189,7 +220,15 @@ Tests use temporary databases and never touch `data/planlayer.db`.
 13. Restart Streamlit and verify remaining reminders persist. Test blank titles
     and a missing reminder date/time for readable validation messages.
 
-Development is on `milestone-2-reminders`; review/test its Pull Request before
+14. Open Today: verify today's event intervals and bell-labelled reminders, including
+    a reminder inside an event. Tomorrow must open tomorrow's Day view.
+15. In Calendar, pick a date and use Previous Day / Today / Next Day. Check an empty day.
+16. Switch to Week. Pick a Wednesday: the agenda must start Monday and end Sunday.
+    Use Previous Week / Current Week / Next Week and check the seven day headings.
+17. Return to Events / Add Item after browsing; titles/times/counts must be unchanged.
+    Verify editing and confirmed deletion still work for both types.
+
+Development is on `milestone-3-calendar-views`; review/test its Pull Request before
 merging into `main`. No future product milestones are part of this change.
 
 Read [AGENTS.md](AGENTS.md) for development rules and
