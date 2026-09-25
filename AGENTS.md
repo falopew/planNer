@@ -9,9 +9,11 @@ Read `docs/PRODUCT_SPEC.md` before changing application behavior.
 Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
 Milestone 1 supplies persistent Fixed Event CRUD. Milestone 2 adds only persistent
 Reminder CRUD and a mixed chronological display. Milestone 3 adds read-only
-Today/Tomorrow, selected-day and Monday–Sunday week agendas. A roadmap is
+Today/Tomorrow, selected-day and Monday–Sunday week agendas. Milestone 4 adds
+shared Event/Reminder recurrence with virtual occurrences and additive SQLite upgrades.
+A roadmap is
 not authorization to implement it. Complete only the milestone requested.
-Work for Milestone 3 belongs on `milestone-3-calendar-views`, with a Pull Request
+Work for Milestone 4 belongs on `milestone-4-recurrence-engine`, with a Pull Request
 against `main`. Do not commit to main or merge the PR automatically.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
@@ -33,25 +35,44 @@ without an explicit request.
 - Milestone 2 adds no dismissal/completion state, notifications, recurrence,
   scheduling, load or gap calculations. Reminders are in-app information only.
 - Use half-open intervals `[start, end)`. Adjacent intervals do not overlap.
-- Events require `end > start`. Milestones 1–3 use local naive datetimes
+- Events require `end > start`. Milestones 1–4 use local naive datetimes
   everywhere, including creation/update timestamps. Reject timezone-aware input.
   Do not add timezone conversion or UTC storage without a later request.
 - Preserve the distinction between fixed-event conflicts and task-block
   collisions. Never silently move fixed events or overwrite task placements.
 - Expand recurring events only within a bounded query window; include
   occurrences that start before the window but overlap it.
-- Timezone and recurrence support are future work. The local-naive rule above
+- Timezone support remains future work. The local-naive rule above
   supersedes the original specification's timezone proposal for this milestone.
 - Recommendations and scheduling must be deterministic and explainable.
   Inject the current time into algorithms instead of reading the clock inside them.
 
 - Calendar UI calls ScheduleService only; it must not query repositories or
-  duplicate date-range filtering. Reuse the day query for week agendas.
+  duplicate date-range filtering. Expand once per requested week and group in services.
 - Day ranges are midnight to next midnight; weeks are Monday to next Monday.
   Include overlapping events, with reminders selected by their single timestamp.
   Sort by original start/reminder time, then Event before Reminder, then ID.
 - Calendar navigation is read-only. Preserve CRUD under Events / Add Item.
   No grid, inline editing, recurrence, conflicts, analytics or scheduling in M3.
+
+## Recurrence rules (Milestone 4)
+
+- Store one base row plus nullable canonical RRULE, never generated occurrences.
+- Share `src/engine/recurrence.py` between Events and Reminders. Support daily,
+  weekdays, weekly/selected weekdays, monthly, positive intervals and inclusive
+  end dates only. No COUNT, yearly patterns, exceptions or per-occurrence edits.
+- Base start/reminder datetime is DTSTART; do not duplicate it in the rule.
+  UNTIL is local end-of-day. Monthly dates absent from a month are skipped.
+- Validate rules in services before writes. UI uses shared structured controls;
+  it must never construct raw RRULE syntax.
+- Calendar copies retain the source ID. Stable occurrence identity is
+  (item type, source ID, occurrence start), not ID alone. Never persist copies.
+- Expand only finite windows, looking backwards by Event duration to include
+  overnight/long overlaps. Reminders still have no end/duration fields.
+- Whole-series edit/delete only. Removing recurrence preserves the one-time base.
+- `database/migrations.py` adds missing nullable recurrence columns without
+  deleting rows. Keep initialization idempotent; never ask users to erase the DB.
+  This is explicit additive migration debt, not a general migration framework.
 
 ## Stack and boundaries
 
@@ -66,7 +87,7 @@ Planned layers:
 - `src/services/`: application use cases, orchestration, transactions.
 - `src/models/`: plain dataclasses. EventService and ReminderService validate
   their own input using small shared validators in `src/services/validation.py`.
-- `src/engine/`: future pure scheduling
+- `src/engine/`: pure recurrence and future scheduling
   algorithms; no Streamlit, SQLAlchemy, database access or network calls.
 - `src/database/`: SQLAlchemy mappings, queries and session setup.
 

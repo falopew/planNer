@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy import URL, Engine, create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.database.migrations import upgrade_schema
 from src.database.models import Base
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[2] / "data" / "planlayer.db"
@@ -27,7 +28,7 @@ def initialize_database(database_path: Path = DEFAULT_DATABASE_PATH) -> Engine:
 
     The caller owns the returned engine and should dispose it when finished.
     Missing tables are created; existing tables/data are never recreated.
-    create_all is not a migration system for future column changes.
+    Explicit additive upgrades handle recurrence columns on existing tables.
     """
     database_path = database_path.resolve()
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,6 +36,7 @@ def initialize_database(database_path: Path = DEFAULT_DATABASE_PATH) -> Engine:
     event.listen(engine, "connect", _enable_foreign_keys)
     try:
         Base.metadata.create_all(engine)
+        upgrade_schema(engine)
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except SQLAlchemyError:

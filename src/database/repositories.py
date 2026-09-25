@@ -21,6 +21,7 @@ def _to_event(record: EventRecord) -> Event:
         location=record.location,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        recurrence_rule=record.recurrence_rule,
     )
 
 
@@ -78,6 +79,17 @@ class EventRepository:
             session.flush()
             result = _to_event(record)
         return result
+
+    def list_recurring_events(self, before: datetime) -> list[Event]:
+        """Load candidate base series once, including anchors before the window."""
+        with self._sessions() as session:
+            records = session.scalars(
+                select(EventRecord).where(
+                    EventRecord.recurrence_rule.is_not(None),
+                    EventRecord.start_datetime < before,
+                )
+            )
+            return [_to_event(record) for record in records]
 
     def delete_event(self, event_id: int) -> bool:
         with self._sessions.begin() as session:

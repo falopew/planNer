@@ -12,6 +12,7 @@ class EventInput:
     description: str = ""
     category: str = "Other"
     location: str = ""
+    recurrence_rule: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

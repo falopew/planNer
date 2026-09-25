@@ -8,9 +8,11 @@ Milestone 0 supplies packaging, SQLite initialization/health checks and tests.
 Milestone 1 adds persistent Fixed Event creation, editing, deletion, listing
 and range queries. Milestone 2 adds separate persistent Reminders and a mixed
 chronological display. Milestone 3 adds Today/Tomorrow, selected Day and Week
-agendas. Flexible Tasks and scheduling engines remain planned.
+agendas. Milestone 4 adds shared recurrence for Events and Reminders, virtual
+calendar occurrences and additive schema upgrades. Flexible Tasks and other
+scheduling engines remain planned.
 
-Milestones 1–3 use local naive datetimes, superseding the original
+Milestones 1–4 use local naive datetimes, superseding the original
 timezone-aware/UTC proposal. No conversion or timezone libraries are introduced.
 
 The product helps a person distinguish commitments, work that still needs
@@ -39,20 +41,18 @@ timestamps. Titles must not be blank.
 A Fixed Event represents an existing commitment, such as a lecture or meeting.
 Its end must be later than its start. The implemented `events` table stores
 id, title, description, start_datetime, end_datetime, category, location,
-created_at and updated_at. Titles are trimmed and limited to 200 characters;
+created_at, updated_at and nullable recurrence_rule. Titles are trimmed and limited to 200 characters;
 blank categories default to Other. Category is a string, not a separate table.
 Edits preserve id/created_at and refresh updated_at. All times are local naive.
 The creation form uses one selected date; the service can store any valid
 interval, including overnight events. Overlaps are allowed, but conflict
 detection/reporting is NOT implemented in Milestone 1.
 
-Recurring event definitions generate virtual occurrences for the visible
-window. Occurrences behave like ordinary events for occupancy and conflict
-detection. A stable occurrence identity combines the series ID and occurrence
-start instant. The first recurrence milestone supports daily and weekly
-patterns with an optional count or end date. An unbounded series is allowed
-only with bounded expansion queries. Single-occurrence edits, exclusions and
-advanced recurrence patterns are deferred.
+Recurring base items generate virtual occurrences for a finite visible window.
+A stable occurrence identity combines item type, source ID and occurrence start.
+Daily, weekdays, weekly/selected weekdays, monthly, positive intervals and an
+optional inclusive end date are supported. COUNT, yearly recurrence, exceptions,
+timezones and per-occurrence edits are deferred. No conflict detection is implemented.
 
 ### Flexible Tasks
 
@@ -76,7 +76,8 @@ Completion does not automatically delete its recorded block.
 ### Reminders
 
 A Reminder is an independent record containing id, title, description,
-reminder_datetime, category, created_at and updated_at. It has NO start/end,
+reminder_datetime, category, created_at, updated_at and nullable recurrence_rule.
+It has NO start/end,
 duration or active/dismissed fields in Milestone 2. Titles are trimmed, nonblank
 and at most 200 characters; blank category defaults to Other. Description is
 optional. All timestamps are local naive values. Edits preserve id/created_at
@@ -96,8 +97,8 @@ a stable tie-breaker. It performs no occupancy/conflict calculations.
 
 Reminder range selection uses `range_start <= reminder_datetime < range_end`.
 Invalid, missing or timezone-aware input is rejected by ReminderService using
-shared validation helpers, before persistence. No recurrence or notifications
-are implemented; dismissal/completion is also deferred.
+shared validation helpers, before persistence. Recurrence shares the Event engine
+but generates only reminder instants. Notifications and dismissal/completion are deferred.
 
 The initial reminder experience is in-app display when the app is open.
 It does not promise operating-system alarms or delivery while Streamlit is closed.
@@ -124,6 +125,7 @@ src/
   database/
     __init__.py
     db.py
+    migrations.py
     models.py
     repositories.py
     reminder_repository.py
@@ -131,6 +133,7 @@ src/
     __init__.py
     event.py
     reminder.py
+    recurrence.py
   services/
     __init__.py
     event_service.py
@@ -144,8 +147,10 @@ src/
     schedule.py
     calendar.py
     categories.py
+    recurrence.py
   engine/
     __init__.py
+    recurrence.py
   utils/
     __init__.py
     time_utils.py
@@ -171,32 +176,74 @@ rather than a generic repository framework or dependency-injection container.
 
 SQLAlchemy owns database mapping. Domain dataclasses remain independent of
 ORM models. pandas prepares report tables; Plotly renders charts.
-python-dateutil remains an installed dependency for future recurrence work;
-no recurrence or timezone handling is implemented now.
+python-dateutil powers the bounded recurrence engine; timezone handling remains deferred.
 
 ## Calendar views (Milestone 3)
 
 Today is the default sidebar destination; Tomorrow opens Calendar's Day view.
 Calendar offers Day and Week, date selection, previous/next navigation, and
 Today/Current Week reset. Events / Add Item retains both existing CRUD workflows.
-No placeholder Settings/Analytics pages, calendar editing, grid or new schema.
+No placeholder Settings/Analytics pages, calendar editing or grid.
 
 Calendar UI calls only ScheduleService. Its combined bounded query delegates to
 EventService and ReminderService. Day uses `[midnight, next midnight)`; Week
 normalizes any selected date to Monday and returns an ordered mapping of seven
-dates to day schedules. It reuses day queries (14 small bounded queries per week)
-to avoid duplicating range predicates. The week ends at next Monday, excluded.
+dates to day schedules. It fetches and expands the week once (four SELECTs), then
+groups in the service with shared half-open overlap semantics. Query count does
+not grow with the number of series. The week ends at next Monday, excluded.
 
 Existing Event/Reminder dataclasses are the shared typed display representation;
-no additional model/table is needed. Items sort by original event start/reminder
+no additional model/table is needed. Copies preserve source IDs; identity is
+(type, source ID, occurrence start), never ID alone. Items sort by occurrence start/reminder
 instant, then Event before Reminder, then ID within type. An overnight event
 appears once per overlapping day with its original endpoints, including dates.
 Reminders are lighter, bell-labelled single instants with no duration block.
 Category and optional notes/location are visible; IDs/audit times are hidden.
 Empty days have explicit messages. Navigation never writes item records.
 
-This is display/navigation only, not conflict detection, occupancy calculation,
-recurrence, task scheduling, analytics or notifications. Datetimes stay local naive.
+Calendar remains display/navigation only: recurrence expansion is in the engine
+and services. No conflict detection, occupancy calculation, task scheduling,
+analytics or notifications. Datetimes stay local naive.
+
+## Shared recurrence engine (Milestone 4)
+
+Persist only nullable `recurrence_rule TEXT` on each base Event/Reminder. NULL is
+one-time. The stored datetime acts as DTSTART. There is no separate series table
+and no occurrence rows. Existing callers default to non-recurring behavior.
+
+`RecurrencePattern` holds daily/weekly/monthly frequency, positive integer interval,
+optional weekdays (Monday=0) and optional end date. A pure shared engine builds,
+parses, validates and expands the supported RRULE subset. Examples:
+`FREQ=DAILY;INTERVAL=1`, `FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE,FR`,
+`FREQ=MONTHLY;INTERVAL=3`. Weekly without BYDAY follows the anchor weekday;
+Weekdays is weekly with BYDAY=MO,TU,WE,TH,FR. Week cycles always start Monday.
+
+End dates are inclusive for starts, encoded as local `UNTIL=YYYYMMDDT235959`.
+Fractional seconds from the anchor are preserved. No COUNT, yearly frequency,
+ordinal weekdays, exceptions, UTC or arbitrary UNTIL time variants are accepted.
+Invalid/malformed/unsupported rules become readable validation errors before writes.
+A custom weekly rule requires weekdays; the end date cannot precede the anchor date.
+
+The engine only expands finite requested ranges. It fast-forwards whole cycles
+near the lower bound without changing their original phase, then delegates to
+dateutil with explicit weekday/month-day defaults. Tests compare results against
+dateutil expansion from the original anchor. No start precedes DTSTART. Monthly
+31st skips months without day 31; no last-day fallback. Empty engine ranges return
+an empty list; ScheduleService retains its existing rejection of nonpositive ranges.
+
+ScheduleService excludes recurring base rows from ordinary range results and
+substitutes virtual copies exactly once. Events preserve the base duration;
+search starts one duration before the window, then filters by interval overlap.
+Reminders only generate points in `[start, end)`. Long/overnight events can appear
+on multiple days; occurrences with an unrepresentable end beyond year 9999 are omitted.
+Ordering stays timestamp, Event before Reminder, then source ID. CRUD listing
+returns base items, never an unbounded list of occurrences. Expansion never writes.
+
+Both editors share structured repeat controls and explicit Create/Save buttons.
+The controls rerun interactively with keyed draft fields rather than batched
+Streamlit forms, so custom options appear immediately without writing data.
+Editing/deleting affects the entire series; removal of recurrence saves NULL,
+leaving the base item at its stored datetime. Calendar stays read-only.
 
 ## Temporal and interval rules
 
@@ -204,7 +251,7 @@ recurrence, task scheduling, analytics or notifications. Datetimes stay local na
   are adjacent, not conflicting.
 - Two intervals overlap exactly when `a.start < b.end` and
   `b.start < a.end`. Require positive duration.
-- Milestones 1–3 store local naive Python datetimes in SQLite DateTime columns.
+- Milestones 1–4 store local naive Python datetimes in SQLite DateTime columns.
   EventService and ReminderService reject missing, non-datetime and timezone-aware inputs.
   No UTC conversion or timezone preferences are implemented.
 - Range queries return complete records overlapping the half-open query range,
@@ -296,11 +343,10 @@ nullable "everything is an item" table.
 
 | Table | Conceptual contents |
 | --- | --- |
-| events (implemented) | ID, title, description, local naive start/end, category, location, local naive creation/update timestamps |
-| recurring_event_series | ID, title, notes, local start, IANA timezone, positive elapsed duration, recurrence rule and timestamps |
+| events (implemented) | ID, title, description, local naive start/end, category, location, local naive creation/update timestamps, nullable recurrence_rule |
 | flexible_tasks | ID, title, notes, UTC deadline, estimated minutes, active/completed status, completion timestamp and timestamps |
 | scheduled_task_blocks | ID, unique task foreign key, UTC start/end and timestamps |
-| reminders (implemented) | ID, title, description, local naive reminder_datetime, category, local naive created_at/updated_at; no end or duration |
+| reminders (implemented) | ID, title, description, local naive reminder_datetime, category, local naive created_at/updated_at, nullable recurrence_rule; no end or duration |
 | user_preferences | One local user's timezone, week start, planning/sleep/meal settings and load threshold |
 
 Generated occurrences are not database rows in the initial design.
@@ -312,15 +358,20 @@ will be chosen when that milestone is implemented.
 Enforce positive durations, valid time ordering and foreign keys. Add indexes
 for event times, deadlines and reminder timestamps as needed by actual queries.
 A task deletion deletes its linked block within the same transaction.
-Deleting a recurrence definition removes its virtual occurrences; confirmation
-belongs in the future UI because it affects an entire series.
+Deleting a recurring base removes every virtual occurrence; the current UI
+warns explicitly that deletion affects the whole series.
 
 Enable SQLite foreign-key enforcement for every connection. Repository writes
 commit on success and roll back on failure, with a new session per operation.
 Initialization uses SQLAlchemy `create_all` to add missing events/reminders tables without
 discarding existing data. No Alembic or migration framework is introduced.
-`create_all` cannot migrate existing columns; later schema changes need an
-explicit migration plan.
+`create_all` cannot migrate existing columns. After it runs, the isolated
+`database/migrations.py` upgrade acquires SQLite's write lock, inspects tables,
+and adds missing recurrence columns with ALTER TABLE. Existing rows remain intact
+with NULL recurrence. Repeated initialization and new installations are supported.
+This is lightweight additive migration debt, not a general schema migration
+framework: no version ledger or Alembic. Future changes need explicit migration
+steps. Users should back up important databases, never delete them to upgrade.
 Local database files must be excluded from version control.
 
 ## Development roadmap and acceptance gates
@@ -341,13 +392,16 @@ describe ordering, not permission to build ahead.
    display and confirmed deletion. No recurrence, notifications or occupied time.
    Verify event coexistence, identical timestamps, database upgrades, persistence
    and all existing event tests.
-5. **Milestone 3 — Day & Week Calendar Views (current):** Today/Tomorrow,
+5. **Milestone 3 — Day & Week Calendar Views (complete):** Today/Tomorrow,
    selected-day and Monday–Sunday agendas via ScheduleService, with read-only
    date navigation, deterministic combined ordering and distinct reminder styling.
    Verify midnight boundaries, overnight overlap, empty days, week selection,
    no navigation mutations and all existing CRUD tests.
-6. **Recurring events:** daily/weekly series and bounded expansion.
-   Verify overnight overlap, termination limits and DST policy.
+6. **Milestone 4 — Recurrence Engine (current):** shared Event/Reminder daily,
+   weekdays, weekly/selected weekdays, monthly, intervals and inclusive end dates.
+   Virtual expansion only; whole-series edit/delete and safe additive upgrades.
+   Verify boundaries, overnight duration, no duplicates/materialization, recurrence
+   persistence/removal, real M3 upgrade, UI controls and existing regressions.
 7. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
    and daily load. Verify adjacency, containment, cross-day clipping,
    zero capacity and no double-counting.
@@ -372,5 +426,5 @@ The first implementation intentionally uses a single local user, unsplit task
 placements, a deterministic greedy scheduler, virtual recurrence occurrences,
 and in-app reminders. These choices keep the project understandable while
 leaving clear extension points. Only the foundation and Fixed Event CRUD are
-implemented together with the Reminder Layer and read-only calendar agendas. Scheduling engines and other product
-milestones remain unimplemented.
+implemented together with the Reminder Layer, read-only calendar agendas and shared
+recurrence. Other scheduling engines and product milestones remain unimplemented.

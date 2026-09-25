@@ -254,6 +254,7 @@ def test_constraints_rollback_and_no_interval_columns(tmp_path: Path) -> None:
             "category",
             "created_at",
             "updated_at",
+            "recurrence_rule",
         }
     finally:
         engine.dispose()

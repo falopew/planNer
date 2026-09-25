@@ -1,16 +1,19 @@
 """Forms and cards for Fixed Events. All operations go through EventService."""
 
+from dataclasses import replace
 from datetime import date, datetime, time
 
 import streamlit as st
 
 from src.models.event import Event, EventInput
+from src.models.recurrence import RecurrenceValidationError
 from src.services.event_service import (
     EventService,
     EventStorageError,
     EventValidationError,
 )
 from src.ui.categories import CATEGORIES
+from src.ui.recurrence import render_recurrence_controls, rule_from_controls
 
 
 def _finish(message: str) -> None:
@@ -32,33 +35,60 @@ def _event_form(service: EventService, event: Event | None) -> None:
     categories = list(CATEGORIES)
     if event and event.category not in categories:
         categories.append(event.category)
-    with st.form(form_key):
+    with st.container():
         title = st.text_input(
-            "Title", value=event.title if event else "", max_chars=200
+            "Title",
+            value=event.title if event else "",
+            max_chars=200,
+            key=f"{form_key}_title",
         )
         description = st.text_area(
-            "Description", value=event.description if event else ""
+            "Description",
+            value=event.description if event else "",
+            key=f"{form_key}_description",
         )
         day = st.date_input(
-            "Date", value=event.start_datetime.date() if event else date.today()
+            "Date",
+            value=event.start_datetime.date() if event else date.today(),
+            key=f"{form_key}_date",
         )
         start = st.time_input(
-            "Start time", value=event.start_datetime.time() if event else time(9)
+            "Start time",
+            value=event.start_datetime.time() if event else time(9),
+            key=f"{form_key}_start",
         )
         end = st.time_input(
-            "End time", value=event.end_datetime.time() if event else time(10)
+            "End time",
+            value=event.end_datetime.time() if event else time(10),
+            key=f"{form_key}_end",
         )
         # Preserve a multi-day event supplied through the service API when editing.
         end_day = day
         if event and event.end_datetime.date() != event.start_datetime.date():
-            end_day = st.date_input("End date", value=event.end_datetime.date())
+            end_day = st.date_input(
+                "End date", value=event.end_datetime.date(), key=f"{form_key}_end_date"
+            )
         category = st.selectbox(
             "Category",
             categories,
             index=categories.index(event.category if event else "Other"),
+            key=f"{form_key}_category",
         )
-        location = st.text_input("Location", value=event.location if event else "")
-        submitted = st.form_submit_button("Save changes" if event else "Create event")
+        location = st.text_input(
+            "Location",
+            value=event.location if event else "",
+            key=f"{form_key}_location",
+        )
+        recurrence = render_recurrence_controls(
+            form_key,
+            event.recurrence_rule if event else None,
+            event.start_datetime if event else None,
+        )
+        if event and event.recurrence_rule:
+            st.caption("Editing recurrence changes the entire series.")
+        submitted = st.button(
+            "Save changes" if event else "Create event", key=f"{form_key}_save"
+        )
     if not submitted:
         return
     data = EventInput(
@@ -78,13 +108,20 @@ def _event_form(service: EventService, event: Event | None) -> None:
         location=location,
     )
     try:
+        data = replace(
+            data, recurrence_rule=rule_from_controls(recurrence, data.start_datetime)
+        )
         if event:
             saved = service.update_event(event.id, data)
             message = "Event updated." if saved else "That event no longer exists."
         else:
             service.create_event(data)
             message = "Event created."
-    except (EventValidationError, EventStorageError) as error:
+    except (
+        EventValidationError,
+        EventStorageError,
+        RecurrenceValidationError,
+    ) as error:
         st.error(str(error))
         return
     _finish(message)
@@ -100,6 +137,8 @@ def _confirm_delete(service: EventService) -> None:
         st.info("That event no longer exists.")
         return
     st.warning(f'Delete "{event.title}"? This cannot be undone.')
+    if event.recurrence_rule:
+        st.warning("This will delete the recurring series and all its occurrences.")
     if st.button("Confirm deletion", key=f"confirm_delete_{event.id}"):
         deleted = service.delete_event(event.id)
         _finish("Event deleted." if deleted else "That event no longer exists.")
@@ -125,6 +164,8 @@ def render_event_card(event: Event) -> None:
         st.write(f"Category: {event.category}")
         if event.location:
             st.write(f"Location: {event.location}")
+        if event.recurrence_rule:
+            st.caption("Repeating series · edit/delete affects all occurrences")
         if event.description:
             st.write(event.description)
         st.button(
@@ -153,5 +194,5 @@ def render_event_editor(service: EventService) -> None:
             st.info("That event no longer exists.")
         _event_form(service, event)
         _confirm_delete(service)
-    except EventStorageError as error:
+    except (EventStorageError, RecurrenceValidationError) as error:
         st.error(str(error))
