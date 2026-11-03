@@ -3,7 +3,9 @@
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 
+from src.engine.conflicts import detect_conflicts
 from src.engine.recurrence import generate_occurrences
+from src.models.conflict import DayAgenda, WeekAgenda
 from src.models.event import Event
 from src.models.reminder import Reminder
 from src.services.event_service import EventService
@@ -80,6 +82,18 @@ class ScheduleService:
 
     def get_day_schedule(self, day: date) -> list[Event | Reminder]:
         return self.get_schedule_between(*get_day_bounds(day))
+
+    def get_day_agenda(self, day: date) -> DayAgenda:
+        """Analyze the same expanded snapshot displayed by the UI, with no writes."""
+        items = self.get_day_schedule(day)
+        return DayAgenda(items, detect_conflicts(items, *get_day_bounds(day)))
+
+    def get_week_agenda(self, day: date) -> WeekAgenda:
+        days = self.get_week_schedule(day)
+        # Multi-day occurrences appear in several agendas. The pure detector
+        # deduplicates by occurrence identity, not just by stored series ID.
+        items = (item for daily_items in days.values() for item in daily_items)
+        return WeekAgenda(days, detect_conflicts(items, *get_week_bounds(day)))
 
     def get_week_schedule(self, day: date) -> dict[date, list[Event | Reminder]]:
         """Seven Monday–Sunday agendas, including empty days.

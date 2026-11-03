@@ -35,7 +35,7 @@ def main() -> None:
             st.error("Database connection check failed.")
             return
         st.caption(
-            "Milestone 4: Shared Recurrence Engine. "
+            "Milestone 5: Conflict Detection. "
             "Times are local, without timezone conversion."
         )
         events = EventService(EventRepository(engine))

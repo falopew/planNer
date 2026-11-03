@@ -6,12 +6,14 @@ remain future milestones. No LLM/AI functionality is included.
 
 ## Current status
 
-Milestone 4 — Recurrence Engine: shared repeating Events and Reminders, expanded
+Milestone 5 — Conflict Detection: read-only overlap warnings in Today/Day/Week.
+Supports ordinary and recurring Fixed Events; Reminders never create conflicts.
+Shared repeating Events and Reminders are expanded
 virtually into Today, Tomorrow, selected Day and Monday–Sunday Week agendas.
 One-time CRUD and confirmed deletion remain available. Existing databases upgrade
 in place without deleting data.
 SQLite initialization, health checks and all foundation behavior remain available.
-Tasks, conflict detection, scheduling and recommendations
+Tasks, free-gap/load calculations, scheduling and recommendations
 are **not implemented**.
 
 ## Architecture
@@ -90,7 +92,8 @@ The current schedule combines typed records for display only, ordered by event
 start/reminder timestamp. Ties show events first, then reminders, with ID as a
 stable tie-breaker within each type. Reminder entries show a bell, one time and
 “No occupied time”; event cards retain their start/end times. Busy events never
-hide reminders. No occupancy, conflict, gap or load calculation is implemented.
+hide reminders. Conflict warnings are computed separately by the pure conflict engine.
+No occupancy, gap or load calculation is implemented.
 
 The literal `src` package follows the requested foundation layout; it is not
 the conventional `src/planlayer` packaging layout. Future algorithms will be
@@ -166,6 +169,45 @@ leaves the base item at its original stored datetime. Deleting the base removes
 all virtual occurrences; there are no individual exceptions. Event occurrences
 whose end would exceed Python's year-9999 limit are omitted.
 
+## Conflict detection (Milestone 5)
+
+`src/engine/conflicts.py` compares already-expanded Fixed Event occurrences;
+`src/models/conflict.py` holds read-only results. ScheduleService's
+`get_day_agenda` / `get_week_agenda` return the displayed items plus conflicts
+from that same snapshot, without extra database queries. Calendar UI renders
+warnings with both titles, occurrence starts and overlap dates/times.
+
+The detector deduplicates by (source ID, occurrence start), sorts by start/ID,
+and compares each unordered pair with early stopping on disjoint intervals.
+Worst-case cost is O(n²), appropriate for small personal-calendar windows.
+Three mutually overlapping events produce three pairwise conflicts.
+Reminders are ignored; 10:00–11:00 and 11:00–12:00 are adjacent, not conflicting.
+Overlaps are clipped to the selected half-open day/week window, preventing
+warnings for overlap outside that view. Week view reports each pair once even
+if it spans several days. Distinct overlapping occurrences of the same long
+recurring series still count. No rows are changed, persisted or moved.
+
+New tests: `tests/test_conflicts.py` (pure boundaries/identity/order) and
+`tests/test_conflict_calendar.py` (recurrence, query count, UI and no writes).
+No new schema or dependencies. Warnings are informational, not save blockers.
+Times remain local naive; there is no conflict resolution or auto-rescheduling.
+
+### Quick manual test
+
+1. Under Events / Add Item, create Lecture on 4 Nov 2026, 10:00–12:00,
+   and Meeting on the same date, 11:00–13:00.
+2. Open Calendar → Day → 4 Nov 2026. Expect one conflict, overlap 11:00–12:00.
+3. Add a Reminder at 11:30. It stays visible; conflict count remains one.
+4. Edit Meeting to 12:00–13:00. Return to Day: no conflict (adjacency).
+5. Change Meeting back to 11:00–13:00 and set both Events to Daily.
+   Select 5 Nov: expect one conflict. Week containing 4 Nov shows five conflicts
+   (Wednesday–Sunday), one per date, if no other events exist.
+6. Delete Meeting through confirmed deletion: future conflicts disappear.
+7. To test Today, repeat steps 1–3 using your computer's current local date.
+
+For predictable results use an empty date range or a fresh clone, not deletion
+of your existing database. Existing records can legitimately add more conflicts.
+
 ## Installation (Python 3.12+)
 
 From PowerShell on Windows:
@@ -174,7 +216,7 @@ From PowerShell on Windows:
 git clone https://github.com/falopew/planNer.git
 cd planNer
 git fetch origin
-git switch milestone-4-recurrence-engine
+git switch milestone-5-conflict-detection
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -256,8 +298,8 @@ Tests use temporary databases and never touch `data/planlayer.db`.
   The picker excludes seven days at each extreme of Python's date range so
   previous/next navigation and exclusive week ends remain representable.
 - Category is a simple string; there is no Category table.
-- There is no conflict detection, pagination or multi-user edit
-  coordination. Overlapping commitments are allowed and are not flagged yet.
+- There is no pagination or multi-user edit
+  coordination. Overlapping commitments are allowed and flagged in calendar views, not blocked.
 - Recurrence has no yearly rules, COUNT ending, positional weekdays, holidays,
   per-occurrence editing/deletion, exceptions, timezone conversion or DST support.
 - Database health means a query succeeds, not a full integrity/schema audit.
@@ -298,7 +340,7 @@ Tests use temporary databases and never touch `data/planlayer.db`.
 21. On a backup copy of an M3 database, start the new app twice: existing Events and
     Reminders must remain, with no recurrence until explicitly configured.
 
-Development is on `milestone-4-recurrence-engine`; review/test its Pull Request before
+Development is on `milestone-5-conflict-detection`; review/test its Pull Request before
 merging into `main`. No future product milestones are part of this change.
 
 Read [AGENTS.md](AGENTS.md) for development rules and

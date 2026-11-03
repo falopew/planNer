@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from src.models.conflict import EventConflict
 from src.models.event import Event
 from src.models.recurrence import RecurrenceValidationError
 from src.models.reminder import Reminder
@@ -100,11 +101,30 @@ def _render_items(items: list[Event | Reminder], empty_message: str) -> None:
                 st.text(item.description)
 
 
+def _render_conflicts(conflicts: list[EventConflict]) -> None:
+    if not conflicts:
+        st.caption("No event conflicts in this view.")
+        return
+    st.warning(
+        f"{len(conflicts)} event conflict(s) in this view. "
+        "Events are not moved automatically."
+    )
+    for conflict in conflicts:
+        # Plain text prevents user titles from being interpreted as Markdown.
+        st.text(
+            f"{conflict.first.title} ↔ {conflict.second.title}\n"
+            f"Overlap: {conflict.overlap_start:%d %b %Y %H:%M} – "
+            f"{conflict.overlap_end:%d %b %Y %H:%M}\n"
+            f"Starts: {conflict.first.start_datetime:%d %b %Y %H:%M} / "
+            f"{conflict.second.start_datetime:%d %b %Y %H:%M}"
+        )
+
+
 def _render_day(service: ScheduleService, selected: date) -> None:
     st.header(selected.strftime("%A, %d %B %Y"))
-    _render_items(
-        service.get_day_schedule(selected), "No plans or reminders for this day."
-    )
+    agenda = service.get_day_agenda(selected)
+    _render_conflicts(agenda.conflicts)
+    _render_items(agenda.items, "No plans or reminders for this day.")
 
 
 def render_today(service: ScheduleService) -> None:
@@ -136,9 +156,11 @@ def render_calendar(service: ScheduleService) -> None:
         if not week:
             _render_day(service, selected)
             return
-        days = service.get_week_schedule(selected)
+        agenda = service.get_week_agenda(selected)
+        days = agenda.days
         dates = list(days)
         st.header(f"Week: {dates[0]:%d %b %Y} – {dates[-1]:%d %b %Y}")
+        _render_conflicts(agenda.conflicts)
         for day, items in days.items():
             st.subheader(day.strftime("%A, %d %B"))
             _render_items(items, "No items")

@@ -13,7 +13,7 @@ Today/Tomorrow, selected-day and Monday–Sunday week agendas. Milestone 4 adds
 shared Event/Reminder recurrence with virtual occurrences and additive SQLite upgrades.
 A roadmap is
 not authorization to implement it. Complete only the milestone requested.
-Work for Milestone 4 belongs on `milestone-4-recurrence-engine`, with a Pull Request
+Work for Milestone 5 belongs on `milestone-5-conflict-detection`, with a Pull Request
 against `main`. Do not commit to main or merge the PR automatically.
 Do not introduce LLM/AI functionality, external calendar integrations,
 authentication, background notification infrastructure, or other future scope
@@ -35,7 +35,7 @@ without an explicit request.
 - Milestone 2 adds no dismissal/completion state, notifications, recurrence,
   scheduling, load or gap calculations. Reminders are in-app information only.
 - Use half-open intervals `[start, end)`. Adjacent intervals do not overlap.
-- Events require `end > start`. Milestones 1–4 use local naive datetimes
+- Events require `end > start`. Milestones 1–5 use local naive datetimes
   everywhere, including creation/update timestamps. Reject timezone-aware input.
   Do not add timezone conversion or UTC storage without a later request.
 - Preserve the distinction between fixed-event conflicts and task-block
@@ -73,6 +73,18 @@ without an explicit request.
 - `database/migrations.py` adds missing nullable recurrence columns without
   deleting rows. Keep initialization idempotent; never ask users to erase the DB.
   This is explicit additive migration debt, not a general migration framework.
+
+## Conflict detection (Milestone 5)
+
+- Detect conflicts only between expanded Fixed Event occurrences. Never include
+  Reminders. Adjacent half-open intervals do not conflict.
+- Keep the detector pure in `src/engine/conflicts.py`; services compose results
+  and UI only renders them. No writes, schema changes or automatic rescheduling.
+- Identify occurrences by source ID plus start datetime. Distinct occurrences
+  of a long series can conflict; repeated copies of one occurrence cannot.
+- Clip overlap to the requested view. Count each unordered pair once per view,
+  including once per week for multi-day overlaps. Preserve deterministic ordering.
+- This milestone excludes free-gap/load calculations, tasks and recommendations.
 
 ## Stack and boundaries
 

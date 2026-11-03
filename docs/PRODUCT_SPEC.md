@@ -10,9 +10,10 @@ and range queries. Milestone 2 adds separate persistent Reminders and a mixed
 chronological display. Milestone 3 adds Today/Tomorrow, selected Day and Week
 agendas. Milestone 4 adds shared recurrence for Events and Reminders, virtual
 calendar occurrences and additive schema upgrades. Flexible Tasks and other
-scheduling engines remain planned.
+scheduling engines remain planned. Milestone 5 adds read-only Fixed Event
+conflict warnings, including recurring occurrences, in Today/Day/Week views.
 
-Milestones 1–4 use local naive datetimes, superseding the original
+Milestones 1–5 use local naive datetimes, superseding the original
 timezone-aware/UTC proposal. No conversion or timezone libraries are introduced.
 
 The product helps a person distinguish commitments, work that still needs
@@ -52,7 +53,7 @@ Recurring base items generate virtual occurrences for a finite visible window.
 A stable occurrence identity combines item type, source ID and occurrence start.
 Daily, weekdays, weekly/selected weekdays, monthly, positive intervals and an
 optional inclusive end date are supported. COUNT, yearly recurrence, exceptions,
-timezones and per-occurrence edits are deferred. No conflict detection is implemented.
+timezones and per-occurrence edits are deferred. Conflict warnings are implemented in Milestone 5.
 
 ### Flexible Tasks
 
@@ -93,7 +94,7 @@ The UI offers a Fixed Event/Reminder selector, a single active editing form and
 a combined chronological list. Reminder cards use a bell and one timestamp;
 event cards retain start/end intervals. ScheduleService combines typed records
 only for display, with events before reminders at equal timestamps and ID as
-a stable tie-breaker. It performs no occupancy/conflict calculations.
+a stable tie-breaker. It delegates conflict detection to the pure engine; no occupancy calculation.
 
 Reminder range selection uses `range_start <= reminder_datetime < range_end`.
 Invalid, missing or timezone-aware input is rejected by ReminderService using
@@ -202,7 +203,7 @@ Category and optional notes/location are visible; IDs/audit times are hidden.
 Empty days have explicit messages. Navigation never writes item records.
 
 Calendar remains display/navigation only: recurrence expansion is in the engine
-and services. No conflict detection, occupancy calculation, task scheduling,
+and services. Conflict detection is also delegated to a pure engine. No occupancy calculation, task scheduling,
 analytics or notifications. Datetimes stay local naive.
 
 ## Shared recurrence engine (Milestone 4)
@@ -245,13 +246,36 @@ Streamlit forms, so custom options appear immediately without writing data.
 Editing/deleting affects the entire series; removal of recurrence saves NULL,
 leaving the base item at its stored datetime. Calendar stays read-only.
 
+## Conflict detection (Milestone 5)
+
+`src/engine/conflicts.py` consumes expanded typed items and a finite half-open
+window, excludes Reminders, and returns EventConflict records with both source
+occurrences and the clipped overlap interval. It never reads/writes storage.
+Identity is source ID plus occurrence start. Duplicate copies are ignored;
+distinct overlapping occurrences of a long series can conflict with each other.
+A sorted pairwise scan emits each unordered pair once, deterministically, with
+early stopping on disjoint intervals and worst-case O(n²) work.
+
+ScheduleService adds DayAgenda/WeekAgenda results combining schedules and conflicts
+from the same fetched snapshot. Existing schedule APIs remain compatible. Week
+analysis uses the existing four queries and deduplicates multi-day copies, so a
+pair spanning multiple days is counted once in the weekly warning summary.
+Day warnings clip overlap to that day. An overlap wholly outside the selected
+window is never reported. Adjacent intervals do not conflict. Three mutually
+overlapping events produce three pairs, not a single merged conflict block.
+
+Today/Day/Week show the number of conflicts, both titles, occurrence starts and
+overlap dates/times. Editing remains in the existing CRUD section. Conflicts do
+not prevent saving and never move events automatically. No schema changes,
+conflict table, tasks, free gaps, load, recommendations or notifications are added.
+
 ## Temporal and interval rules
 
 - Use half-open intervals `[start, end)`: 10:00–11:00 and 11:00–12:00
   are adjacent, not conflicting.
 - Two intervals overlap exactly when `a.start < b.end` and
   `b.start < a.end`. Require positive duration.
-- Milestones 1–4 store local naive Python datetimes in SQLite DateTime columns.
+- Milestones 1–5 store local naive Python datetimes in SQLite DateTime columns.
   EventService and ReminderService reject missing, non-datetime and timezone-aware inputs.
   No UTC conversion or timezone preferences are implemented.
 - Range queries return complete records overlapping the half-open query range,
@@ -397,14 +421,15 @@ describe ordering, not permission to build ahead.
    date navigation, deterministic combined ordering and distinct reminder styling.
    Verify midnight boundaries, overnight overlap, empty days, week selection,
    no navigation mutations and all existing CRUD tests.
-6. **Milestone 4 — Recurrence Engine (current):** shared Event/Reminder daily,
+6. **Milestone 4 — Recurrence Engine (complete):** shared Event/Reminder daily,
    weekdays, weekly/selected weekdays, monthly, intervals and inclusive end dates.
    Virtual expansion only; whole-series edit/delete and safe additive upgrades.
    Verify boundaries, overnight duration, no duplicates/materialization, recurrence
    persistence/removal, real M3 upgrade, UI controls and existing regressions.
-7. **Calendar analysis:** conflict detection, merged busy intervals, free gaps
-   and daily load. Verify adjacency, containment, cross-day clipping,
-   zero capacity and no double-counting.
+7. **Milestone 5 — Conflict Detection (current):** pure occurrence-pair overlap
+   detection, reminder exclusion, clipped day/week warnings, stable identities,
+   no duplicate weekly pairs, no writes or automatic rescheduling.
+   Free gaps, merged busy intervals and daily load remain future milestones.
 8. **Preferences and recommendations:** configurable planning/sleep/meal
    windows and deterministic suggestions. Verify impossible recommendations
    are explained and suggestions do not mutate occupancy.
